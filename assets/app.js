@@ -306,6 +306,219 @@
     });
   }
 
+  // ---------- Outlier analysis ----------
+  // Independent of the office picker: scans every office for the most
+  // recent quarter and flags whichever ones sit statistically far from
+  // their peers on a few metrics. A minimum-volume floor per metric keeps
+  // small offices' noisy ratios (e.g. one denial out of five decided cases)
+  // from crowding out genuine disparities at busier offices.
+  function meanStd(values) {
+    const n = values.length;
+    const mean = values.reduce((s, v) => s + v, 0) / n;
+    const variance = values.reduce((s, v) => s + (v - mean) * (v - mean), 0) / n;
+    return { mean, std: Math.sqrt(variance) };
+  }
+
+  function zOutliers(rows, valueKey, volumeKey, minVolume, threshold) {
+    const candidates = rows.filter(
+      (r) => r[valueKey] != null && r[volumeKey] != null && r[volumeKey] >= minVolume
+    );
+    if (candidates.length < 5) return { outliers: [], mean: 0, std: 0 };
+    const { mean, std } = meanStd(candidates.map((r) => r[valueKey]));
+    if (std === 0) return { outliers: [], mean, std };
+    const outliers = candidates
+      .map((r) => ({ row: r, z: (r[valueKey] - mean) / std }))
+      .filter((o) => Math.abs(o.z) >= threshold)
+      .sort((a, b) => Math.abs(b.z) - Math.abs(a.z));
+    return { outliers, mean, std };
+  }
+
+  function computeOfficeMetricsForQuarter(quarterKey, prevQuarterKey) {
+    const q = state.dataset.quarters[quarterKey];
+    const prevQ = prevQuarterKey ? state.dataset.quarters[prevQuarterKey] : null;
+    const rows = [];
+    for (const code of Object.keys(q.offices)) {
+      if (code === "TOTAL") continue;
+      const o = q.offices[code];
+      const { received: r, approved: a, denied: d, pending: p } = o.total;
+      const { approved: na, denied: nd } = o.nat;
+      if (r == null || a == null || d == null || p == null) continue;
+      const decided = a + d;
+      const efficiency = r > 0 ? decided / r : null;
+      const backlogMonths = decided > 0 ? (p / decided) * 3 : null;
+      const natDecided = (na || 0) + (nd || 0);
+      const denialRate = na != null && nd != null && natDecided > 0 ? (nd / natDecided) * 100 : null;
+      let qoqReceived = null;
+      const prevO = prevQ ? prevQ.offices[code] : null;
+      if (prevO && prevO.total.received) {
+        qoqReceived = ((r - prevO.total.received) / prevO.total.received) * 100;
+      }
+      rows.push({
+        code,
+        name: o.name.trim(),
+        state: o.state,
+        received: r,
+        decided,
+        pending: p,
+        efficiency,
+        backlogMonths,
+        denialRate,
+        qoqReceived,
+      });
+    }
+    return rows;
+  }
+
+  function computeOutliers() {
+    const latestKey = state.quarterKeys[state.quarterKeys.length - 1];
+    const prevKey = state.quarterKeys[state.quarterKeys.length - 2];
+    const rows = computeOfficeMetricsForQuarter(latestKey, prevKey);
+
+    const MIN_DECIDED = 100;
+    const MIN_RECEIVED = 100;
+    const Z_THRESHOLD = 1.3;
+    const flagsByOffice = new Map();
+
+    function addFlag(row, sentiment, text, z) {
+      if (!flagsByOffice.has(row.code)) {
+        flagsByOffice.set(row.code, { code: row.code, name: row.name, state: row.state, flags: [] });
+      }
+      flagsByOffice.get(row.code).flags.push({ sentiment, text, absZ: Math.abs(z) });
+    }
+
+    const denial = zOutliers(rows, "denialRate", "decided", MIN_DECIDED, Z_THRESHOLD);
+    for (const { row, z } of denial.outliers) {
+      if (z > 0) {
+        addFlag(
+          row,
+          "concern",
+          `Denial rate ${row.denialRate.toFixed(1)}% this quarter, vs a ${denial.mean.toFixed(1)}% average across offices this size (${fmtInt.format(row.decided)} decided cases).`,
+          z
+        );
+      } else {
+        addFlag(
+          row,
+          "positive",
+          `Denial rate just ${row.denialRate.toFixed(1)}% this quarter, well below the ${denial.mean.toFixed(1)}% average (${fmtInt.format(row.decided)} decided cases).`,
+          z
+        );
+      }
+    }
+
+    const efficiency = zOutliers(rows, "efficiency", "received", MIN_RECEIVED, Z_THRESHOLD);
+    for (const { row, z } of efficiency.outliers) {
+      if (z < 0) {
+        addFlag(
+          row,
+          "concern",
+          `Completed only ${Math.round(row.efficiency * 100)}% as many cases as it received this quarter (efficiency ${row.efficiency.toFixed(2)} vs a ${efficiency.mean.toFixed(2)} average) — backlog growing fast.`,
+          z
+        );
+      } else {
+        addFlag(
+          row,
+          "positive",
+          `Completed ${Math.round(row.efficiency * 100)}% as many cases as it received this quarter (efficiency ${row.efficiency.toFixed(2)} vs a ${efficiency.mean.toFixed(2)} average) — working down its backlog.`,
+          z
+        );
+      }
+    }
+
+    const backlog = zOutliers(rows, "backlogMonths", "decided", MIN_DECIDED, Z_THRESHOLD);
+    for (const { row, z } of backlog.outliers) {
+      if (z > 0) {
+        addFlag(
+          row,
+          "concern",
+          `Would take roughly ${Math.round(row.backlogMonths)} months to clear its pending backlog at this quarter's pace, vs a ${Math.round(backlog.mean)}-month average.`,
+          z
+        );
+      }
+    }
+
+    const qoq = zOutliers(rows, "qoqReceived", "received", MIN_RECEIVED, Z_THRESHOLD);
+    for (const { row, z } of qoq.outliers) {
+      const dir = row.qoqReceived >= 0 ? "more" : "fewer";
+      addFlag(
+        row,
+        "neutral",
+        `Received ${row.qoqReceived >= 0 ? "+" : ""}${row.qoqReceived.toFixed(0)}% ${dir} applications than last quarter (${fmtInt.format(row.received)} this quarter) — a much bigger swing than most offices.`,
+        z
+      );
+    }
+
+    const offices = Array.from(flagsByOffice.values());
+    for (const o of offices) {
+      o.maxAbsZ = Math.max(...o.flags.map((f) => f.absZ));
+      o.flags.sort((a, b) => b.absZ - a.absZ);
+    }
+    offices.sort((a, b) => b.flags.length - a.flags.length || b.maxAbsZ - a.maxAbsZ);
+
+    return { latestKey, offices: offices.slice(0, 10) };
+  }
+
+  function renderOutlierPanel() {
+    const { latestKey, offices } = computeOutliers();
+    const quarter = state.dataset.quarters[latestKey];
+
+    document.getElementById("outliers-quarter-label").textContent = `— ${quarter.label}`;
+    document.getElementById("outliers-note").textContent =
+      `Offices whose denial rate, completion efficiency, backlog clearance time, or quarter-over-quarter ` +
+      `application volume sits statistically far from their peers this quarter (at least 100 decided cases ` +
+      `or applications received, to keep small offices' noisy ratios from crowding this out). Computed fresh ` +
+      `from each new quarter, not a fixed list — click an office to see its full history above.`;
+
+    const list = document.getElementById("outliers-list");
+    list.innerHTML = "";
+
+    if (offices.length === 0) {
+      const p = document.createElement("p");
+      p.className = "chart-note";
+      p.textContent = "No offices stood out from their peers by this measure this quarter.";
+      list.appendChild(p);
+      return;
+    }
+
+    for (const o of offices) {
+      const card = document.createElement("div");
+      card.className = "outlier-office";
+
+      const header = document.createElement("button");
+      header.className = "outlier-office-header";
+      header.type = "button";
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "outlier-office-name";
+      nameSpan.textContent = `${o.name} (${o.code})`;
+      header.appendChild(nameSpan);
+
+      const locSpan = document.createElement("span");
+      locSpan.className = "outlier-office-loc";
+      locSpan.textContent = o.state || "";
+      header.appendChild(locSpan);
+
+      header.addEventListener("click", () => {
+        const select = document.getElementById("office-select");
+        select.value = o.code;
+        select.dispatchEvent(new Event("change"));
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      });
+      card.appendChild(header);
+
+      const ul = document.createElement("ul");
+      ul.className = "outlier-reasons";
+      for (const f of o.flags) {
+        const li = document.createElement("li");
+        li.className = `outlier-reason ${f.sentiment}`;
+        li.textContent = f.text;
+        ul.appendChild(li);
+      }
+      card.appendChild(ul);
+
+      list.appendChild(card);
+    }
+  }
+
   // ---------- Stat tiles ----------
   function renderStats() {
     const row = document.getElementById("stat-row");
@@ -853,6 +1066,7 @@
     buildOfficeSelect();
     initTableToggles();
     renderAll();
+    renderOutlierPanel();
   }
 
   main();
