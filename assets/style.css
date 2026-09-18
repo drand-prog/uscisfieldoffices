@@ -343,6 +343,83 @@ table.data-table tbody tr:not(:last-child) td {
   border-radius: 2px;
 }
 
+#outliers-quarter-label {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.outliers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.outlier-office {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+.outlier-office-header {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--text-primary);
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.outlier-office-header:hover .outlier-office-name,
+.outlier-office-header:focus-visible .outlier-office-name {
+  color: var(--series-received);
+  text-decoration: underline;
+}
+
+.outlier-office-loc {
+  color: var(--text-muted);
+  font-weight: 400;
+  font-size: 0.8rem;
+  white-space: nowrap;
+}
+
+.outlier-reasons {
+  margin: 6px 0 0;
+  padding-left: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+}
+
+.outlier-reason {
+  list-style: none;
+  position: relative;
+  padding-left: 14px;
+  margin-bottom: 3px;
+}
+.outlier-reason:last-child {
+  margin-bottom: 0;
+}
+.outlier-reason::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.5em;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.outlier-reason.concern::before {
+  background: var(--critical);
+}
+.outlier-reason.positive::before {
+  background: var(--good);
+}
+
 footer.site-footer {
   color: var(--text-muted);
   font-size: 0.78rem;
