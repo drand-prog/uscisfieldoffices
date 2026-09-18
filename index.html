@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>USCIS N-400 Field Office Dashboard</title>
+<meta name="description" content="Quarterly N-400 naturalization application, approval, denial, and pending trends by USCIS field office." />
+<link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+<div class="page">
+  <header class="top">
+    <div>
+      <h1>USCIS N-400 Field Office Dashboard</h1>
+      <p class="subtitle">
+        Quarterly Form N-400 (Application for Naturalization) volumes by USCIS field office:
+        applications received, approved, denied, and pending at quarter end.
+      </p>
+    </div>
+    <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">🌓 Theme</button>
+  </header>
+
+  <section class="filter-row">
+    <div class="field-group">
+      <label for="office-filter">Search field offices</label>
+      <input id="office-filter" type="text" placeholder="Search by office, city, or state…" autocomplete="off" />
+      <select id="office-select" aria-label="Selected field office"></select>
+    </div>
+    <div class="office-meta" id="office-meta"></div>
+  </section>
+
+  <p class="chart-note" id="pdf-quality-note" hidden></p>
+
+  <section class="stat-row" id="stat-row" aria-label="Latest quarter snapshot"></section>
+
+  <section class="chart-card">
+    <h2>Applications by quarter</h2>
+    <p class="chart-note">
+      Received, approved, and denied counts for the quarter (Naturalization + Military Naturalization combined).
+      These are flow counts — each point covers only that quarter's activity, not a running total.
+    </p>
+    <div class="legend-row" id="flow-legend"></div>
+    <div class="chart-wrap"><canvas id="flow-chart"></canvas></div>
+    <div class="chart-footer">
+      <button class="table-toggle" data-target="flow-table-wrap" type="button">View as table</button>
+    </div>
+    <div class="data-table-wrap" id="flow-table-wrap" hidden></div>
+  </section>
+
+  <section class="chart-card">
+    <h2>Pending cases at quarter end</h2>
+    <p class="chart-note">
+      Total pending N-400s as of the last day of each quarter (a running snapshot, not summed across quarters).
+      Note: USCIS pending totals aren't directly derivable quarter-to-quarter because of administrative closures
+      and inter-office transfers not reflected elsewhere in this report.
+    </p>
+    <div class="chart-wrap"><canvas id="pending-chart"></canvas></div>
+    <div class="chart-footer">
+      <button class="table-toggle" data-target="pending-table-wrap" type="button">View as table</button>
+    </div>
+    <div class="data-table-wrap" id="pending-table-wrap" hidden></div>
+  </section>
+
+  <section class="chart-card">
+    <h2>Approval rate vs. denial rate</h2>
+    <p class="chart-note">
+      Share of decided cases (approved + denied) that quarter, computed from the non-military Naturalization
+      category only. Military naturalization is excluded here because ~15% of its office-level cells are
+      suppressed by USCIS for small counts, which would make a rate computed from it unreliable at the
+      office level.
+    </p>
+    <div class="legend-row" id="rate-legend"></div>
+    <div class="chart-wrap"><canvas id="rate-chart"></canvas></div>
+    <div class="chart-footer">
+      <button class="table-toggle" data-target="rate-table-wrap" type="button">View as table</button>
+    </div>
+    <div class="data-table-wrap" id="rate-table-wrap" hidden></div>
+  </section>
+
+  <footer class="site-footer">
+    <p>
+      Source: U.S. Department of Homeland Security, USCIS quarterly Form N-400 performance reports by field
+      office, FY2015 Q1 through FY2026 Q3 (47 quarters). USCIS has changed this report's format several times
+      over that span — spreadsheets (FY2015–2018, FY2022–2026) and PDFs (FY2019–2021) — see the data-quality
+      note above the charts for PDF-derived quarters. "D" indicates a value suppressed by USCIS disclosure
+      standards for small counts; suppressed cells are shown as gaps, not zero. The set of field offices has
+      also changed over time as offices opened, closed, or were renamed; an office is selectable here if it
+      appears in any quarter, and its chart will show gaps for quarters before it opened or after it closed.
+    </p>
+    <p>
+      Note on FY2026 Q3: the source workbook states its reporting period as "April 1, 2025 – June 30, 2026,"
+      which is inconsistent with every other quarter's period and with USCIS's own fiscal-quarter definition.
+      This dashboard treats it as a typo for April 1, 2026 – June 30, 2026 (the correct FY2026 Q3 window) and
+      labels the data point accordingly; the raw text is preserved in the underlying dataset.
+    </p>
+  </footer>
+</div>
+
+<script src="assets/vendor/chart.umd.js"></script>
+<script src="assets/app.js"></script>
+</body>
+</html>
