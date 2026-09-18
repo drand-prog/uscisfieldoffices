@@ -14,63 +14,23 @@ and scripts/parse_pdf.py for how each era is handled. Re-running this script
 for a quarter already in the dataset overwrites that quarter in place.
 """
 import json
-import re
 import sys
 from pathlib import Path
 
-import openpyxl
-
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from parse_common import CODE_RE, iter_grid_offices, values_to_blocks  # noqa: E402
+from parse_common import (  # noqa: E402
+    iter_grid_offices,
+    load_grid,
+    normalize_name,
+    parse_fy_quarter_from_filename,
+    quarter_dates,
+    values_to_blocks,
+)
 from parse_pdf import iter_pdf_offices  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 RAW_DIR = REPO_ROOT / "data" / "raw"
 OUTPUT_PATH = REPO_ROOT / "data" / "n400_quarterly.json"
-
-QUARTER_MONTHS = {
-    1: ((10, 1), (12, 31)),
-    2: ((1, 1), (3, 31)),
-    3: ((4, 1), (6, 30)),
-    4: ((7, 1), (9, 30)),
-}
-
-FILENAME_RE = re.compile(r"fy(\d{4}).{0,6}?q(?:tr)?([1-4])", re.IGNORECASE)
-
-
-def quarter_dates(fy, q):
-    (sm, sd), (em, ed) = QUARTER_MONTHS[q]
-    year = fy - 1 if q == 1 else fy
-    return f"{year:04d}-{sm:02d}-{sd:02d}", f"{year:04d}-{em:02d}-{ed:02d}"
-
-
-def parse_fy_quarter_from_filename(path: Path):
-    m = FILENAME_RE.search(path.name)
-    if not m:
-        raise ValueError(f"Can't find fyYYYY_qN in filename {path.name!r}")
-    return int(m.group(1)), int(m.group(2))
-
-
-def normalize_name(s):
-    return re.sub(r"\s+", " ", (s or "").strip()).lower()
-
-
-def load_grid(path: Path):
-    if path.suffix.lower() == ".xlsx":
-        wb = openpyxl.load_workbook(path, data_only=True)
-        ws = wb[wb.sheetnames[0]]
-        return [[c.value for c in row] for row in ws.iter_rows()]
-    elif path.suffix.lower() == ".csv":
-        import csv
-
-        for encoding in ("utf-8-sig", "cp1252"):
-            try:
-                with open(path, encoding=encoding, newline="") as f:
-                    return list(csv.reader(f))
-            except UnicodeDecodeError:
-                continue
-        raise UnicodeDecodeError("csv", b"", 0, 1, f"could not decode {path.name}")
-    raise ValueError(f"load_grid: unsupported extension {path.suffix}")
 
 
 def build_name_code_lookup(raw_dir: Path):

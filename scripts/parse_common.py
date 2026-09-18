@@ -10,6 +10,56 @@ each file's own content, then reads every row the same way regardless of
 which era it came from.
 """
 import re
+from pathlib import Path
+
+QUARTER_MONTHS = {
+    1: ((10, 1), (12, 31)),
+    2: ((1, 1), (3, 31)),
+    3: ((4, 1), (6, 30)),
+    4: ((7, 1), (9, 30)),
+}
+
+FILENAME_RE = re.compile(r"fy(\d{4}).{0,6}?q(?:tr)?([1-4])", re.IGNORECASE)
+
+
+def quarter_dates(fy, q):
+    """The USCIS federal fiscal quarter's real calendar start/end dates."""
+    (sm, sd), (em, ed) = QUARTER_MONTHS[q]
+    year = fy - 1 if q == 1 else fy
+    return f"{year:04d}-{sm:02d}-{sd:02d}", f"{year:04d}-{em:02d}-{ed:02d}"
+
+
+def parse_fy_quarter_from_filename(path: Path):
+    m = FILENAME_RE.search(path.name)
+    if not m:
+        raise ValueError(f"Can't find fyYYYY_qN in filename {path.name!r}")
+    return int(m.group(1)), int(m.group(2))
+
+
+def normalize_name(s):
+    return re.sub(r"\s+", " ", (s or "").strip()).lower()
+
+
+def load_grid(path: Path):
+    """Load a spreadsheet (.xlsx or .csv) into a grid of cell values."""
+    if path.suffix.lower() == ".xlsx":
+        import openpyxl
+
+        wb = openpyxl.load_workbook(path, data_only=True)
+        ws = wb[wb.sheetnames[0]]
+        return [[c.value for c in row] for row in ws.iter_rows()]
+    elif path.suffix.lower() == ".csv":
+        import csv
+
+        for encoding in ("utf-8-sig", "cp1252"):
+            try:
+                with open(path, encoding=encoding, newline="") as f:
+                    return list(csv.reader(f))
+            except UnicodeDecodeError:
+                continue
+        raise UnicodeDecodeError("csv", b"", 0, 1, f"could not decode {path.name}")
+    raise ValueError(f"load_grid: unsupported extension {path.suffix}")
+
 
 FOOTER_PREFIXES = (
     "table key",
@@ -163,15 +213,21 @@ def row_name(row, boundary):
     return ""
 
 
-def iter_grid_offices(grid):
-    """Yield dicts: {name, code (maybe None), state, values (list of 12), suppressed (list of 12)}
-    plus a synthetic first entry with name='TOTAL' for the national total row."""
+def iter_grid_offices(grid, num_values=12):
+    """Yield dicts: {name, code (maybe None), state, raw_values (list of num_values)}
+    plus a synthetic first entry with name='TOTAL' for the national total row.
+
+    num_values is the number of data columns per row (4 per category block:
+    received/approved/denied/pending) -- 12 for N-400's three blocks
+    (Naturalization/Military/Total), 20 for I-485's five (Family/Employment/
+    Humanitarian/Other/Total). Located the same way regardless: empirically,
+    from wherever the TOTAL row's numbers actually start."""
     total_row_idx, values_start_col = find_total_row(grid)
     code_col = detect_code_col(grid, total_row_idx, values_start_col)
     boundary = code_col if code_col is not None else values_start_col
 
     total_row = grid[total_row_idx]
-    total_values = [total_row[values_start_col + i] if values_start_col + i < len(total_row) else None for i in range(12)]
+    total_values = [total_row[values_start_col + i] if values_start_col + i < len(total_row) else None for i in range(num_values)]
     yield {
         "name": "TOTAL",
         "code": "TOTAL",
@@ -192,7 +248,7 @@ def iter_grid_offices(grid):
         if is_structural_label(name):
             continue
 
-        raw_values = [row[values_start_col + i] if values_start_col + i < len(row) else None for i in range(12)]
+        raw_values = [row[values_start_col + i] if values_start_col + i < len(row) else None for i in range(num_values)]
         has_data = any(cell_text(v) not in ("", " ") for v in raw_values)
 
         code = None
@@ -227,10 +283,17 @@ def iter_grid_offices(grid):
 
 def values_to_blocks(raw_values):
     """Split 12 raw cell values into nat/mil/total blocks of {received,approved,denied,pending}."""
+    return values_to_named_blocks(raw_values, ("nat", "mil", "total"))
+
+
+def values_to_named_blocks(raw_values, bucket_names):
+    """Split raw cell values into named blocks of {received,approved,denied,pending},
+    4 values per bucket in bucket_names order (the general form of values_to_blocks,
+    for report layouts with a different number/set of category blocks)."""
     keys = ("received", "approved", "denied", "pending")
     blocks = {}
     suppressed = {}
-    for bi, bucket in enumerate(("nat", "mil", "total")):
+    for bi, bucket in enumerate(bucket_names):
         vals = {}
         sup = {}
         for ki, key in enumerate(keys):
