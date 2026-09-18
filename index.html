@@ -25,6 +25,15 @@
     <button type="button" role="tab" data-form="i485">I-485 (Adjustment of Status)</button>
   </div>
 
+  <div class="form-toggle category-toggle" id="category-toggle" role="tablist" aria-label="I-485 category" hidden>
+    <button type="button" role="tab" data-category="total" aria-selected="true">All categories</button>
+    <button type="button" role="tab" data-category="family">Family-based</button>
+    <button type="button" role="tab" data-category="employment">Employment-based</button>
+    <button type="button" role="tab" data-category="humanitarian">Humanitarian-based</button>
+    <button type="button" role="tab" data-category="other">Other</button>
+  </div>
+  <p class="chart-note" id="category-note" hidden></p>
+
   <section class="filter-row">
     <div class="field-group">
       <label for="office-filter" id="office-filter-label">Search offices</label>

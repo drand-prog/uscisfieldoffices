@@ -100,7 +100,8 @@ KNOWN_STATE_NAMES = {
     "north dakota", "northern mariana islands", "ohio", "oklahoma", "oregon",
     "pennsylvania", "puerto rico", "rhode island", "south carolina",
     "south dakota", "tennessee", "texas", "utah", "vermont", "virginia",
-    "virgin islands", "washington", "west virginia", "wisconsin", "wyoming",
+    "virgin islands", "u.s. virgin islands", "washington", "west virginia",
+    "wisconsin", "wyoming",
 }
 
 
@@ -143,7 +144,10 @@ def parse_number(raw):
         return None, True
     if s.upper() == "N/A":
         return None, False
-    if s in ("-", "—"):
+    # "Represents zero" -- USCIS source files use several different dash
+    # characters for this across eras/exports (ASCII hyphen, em dash, and at
+    # least one PDF using U+2010 HYPHEN instead of ASCII '-').
+    if s in ("-", "‐", "‑", "‒", "–", "—", "―"):
         return 0, False
     s2 = s.replace(",", "")
     return float(s2) if "." in s2 else int(s2), False
@@ -246,6 +250,11 @@ def iter_grid_offices(grid, num_values=12):
         if looks_like_footer(name):
             break
         if is_structural_label(name):
+            continue
+        if normalize_label(name) in ("total", "grand total"):
+            # Some source files (at least one I-485 CSV era) repeat the
+            # national total a second time near the end of the office list,
+            # after the real one this function already yielded separately.
             continue
 
         raw_values = [row[values_start_col + i] if values_start_col + i < len(row) else None for i in range(num_values)]
