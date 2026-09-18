@@ -47,17 +47,30 @@
       rateBucket: "total",
       rateBucketLabel: "Total category (all four admission categories combined)",
       flowChartNote:
-        "Received, approved, and denied counts for the quarter, summed across all four admission categories (Family-based, Employment-based, Humanitarian-based, Other). These are flow counts — each point covers only that quarter's activity, not a running total.",
+        "Received, approved, and denied counts for the quarter, summed across all four admission categories (Family-based, Employment-based, Humanitarian-based, Other) unless a single category is selected above. These are flow counts — each point covers only that quarter's activity, not a running total.",
       rateChartNote:
-        "Share of decided cases (approved + denied) that quarter, computed from the Total category (all four admission categories combined). Unlike N-400, no I-485 category shows meaningful small-count suppression, so Total is used directly rather than excluding a category.",
+        "Share of decided cases (approved + denied) that quarter, computed from the Total category (all four admission categories combined) unless a single category is selected above. Unlike N-400, no I-485 category shows meaningful small-count suppression, so Total is used directly rather than excluding a category.",
       footerSource:
-        "Source: U.S. Department of Homeland Security, USCIS quarterly Form I-485 performance reports by field office and service center, FY2025 Q4 through FY2026 Q3. “D” indicates a value suppressed by USCIS disclosure standards for small counts; suppressed cells are shown as gaps, not zero. An office is selectable here if it appears in any quarter, and its chart will show gaps for quarters before it opened or after it closed.",
+        "Source: U.S. Department of Homeland Security, USCIS quarterly Form I-485 performance reports by field office and service center, FY2015 Q1 through FY2026 Q3 (47 quarters). Some quarters are PDF-derived (FY2015 Q1, FY2019–2021) — see the data-quality note above the charts for those. “D” indicates a value suppressed by USCIS disclosure standards for small counts; suppressed cells are shown as gaps, not zero. An office is selectable here if it appears in any quarter, and its chart will show gaps for quarters before it opened or after it closed.",
       showFy2026Q3Note: false,
+      // Category blocks this form's report breaks applications into, besides
+      // Total -- lets the dashboard offer a per-category view. N-400 has no
+      // entry here (Military Naturalization is a data-quality carve-out, not
+      // a category worth viewing standalone), so its toggle stays hidden.
+      categories: ["family", "employment", "humanitarian", "other"],
+      categoryLabels: {
+        total: "All categories",
+        family: "Family-based",
+        employment: "Employment-based",
+        humanitarian: "Humanitarian-based",
+        other: "Other",
+      },
     },
   };
 
   const state = {
     formKey: "n400",
+    categoryKey: "total", // "total" | one of formConfig().categories -- I-485 only
     dataset: null,
     quarterKeys: [],
     officeIndex: [], // [{code, name, state}]
@@ -67,6 +80,29 @@
 
   function formConfig() {
     return FORMS[state.formKey];
+  }
+
+  // The bucket every chart/stat/outlier reads its received/approved/denied/
+  // pending from. Defaults to "total"; picking a category in the toggle
+  // (I-485 only) switches every one of them to that category instead of
+  // filtering a Total-based view.
+  function activeBucket() {
+    return state.categoryKey;
+  }
+
+  // The bucket specifically for the approval/denial-rate chart and the
+  // outlier panel's denial-rate metric. At "total" this defers to the form's
+  // own rateBucket (N-400 excludes its suppressed Military category there;
+  // I-485 has no such need); once a specific category is picked, the rate is
+  // naturally computed from that same category.
+  function activeRateBucket() {
+    return state.categoryKey === "total" ? formConfig().rateBucket : state.categoryKey;
+  }
+
+  function categoryLabel(bucket) {
+    const labels = formConfig().categoryLabels;
+    if (labels && labels[bucket]) return labels[bucket];
+    return bucket === "total" ? "Total" : bucket;
   }
 
   function cssVar(name) {
@@ -278,6 +314,11 @@
     const url = new URL(location.href);
     url.searchParams.set("form", state.formKey);
     url.searchParams.set("office", state.selectedCode);
+    if (state.categoryKey === "total") {
+      url.searchParams.delete("category");
+    } else {
+      url.searchParams.set("category", state.categoryKey);
+    }
     history.replaceState(null, "", url);
   }
 
@@ -334,7 +375,7 @@
   }
 
   function rateSeries() {
-    const bucket = formConfig().rateBucket;
+    const bucket = activeRateBucket();
     const approved = seriesFor("approved", bucket);
     const denied = seriesFor("denied", bucket);
     const availability = officeAvailability();
@@ -358,12 +399,13 @@
     return { approvalRate, denialRate };
   }
 
-  // Completions (approved + denied) ÷ received, Total bucket. Below 1 means
+  // Completions (approved + denied) ÷ received, active bucket. Below 1 means
   // the office completed fewer cases than it received that quarter.
   function efficiencySeries() {
-    const received = seriesFor("received", "total");
-    const approved = seriesFor("approved", "total");
-    const denied = seriesFor("denied", "total");
+    const bucket = activeBucket();
+    const received = seriesFor("received", bucket);
+    const approved = seriesFor("approved", bucket);
+    const denied = seriesFor("denied", bucket);
     const availability = officeAvailability();
     return state.quarterKeys.map((_k, i) => {
       const r = received[i];
@@ -376,12 +418,13 @@
     });
   }
 
-  // Pending ÷ completions (approved + denied) × 3 months, Total bucket -- a
+  // Pending ÷ completions (approved + denied) × 3 months, active bucket -- a
   // rough "quarters of backlog, in months" capacity gauge.
   function backlogMonthsSeries() {
-    const pending = seriesFor("pending", "total");
-    const approved = seriesFor("approved", "total");
-    const denied = seriesFor("denied", "total");
+    const bucket = activeBucket();
+    const pending = seriesFor("pending", bucket);
+    const approved = seriesFor("approved", bucket);
+    const denied = seriesFor("denied", bucket);
     const availability = officeAvailability();
     return state.quarterKeys.map((_k, i) => {
       const p = pending[i];
@@ -422,14 +465,15 @@
   }
 
   function computeOfficeMetricsForQuarter(quarterKey, prevQuarterKey) {
-    const rateBucket = formConfig().rateBucket;
+    const bucket = activeBucket();
+    const rateBucket = activeRateBucket();
     const q = state.dataset.quarters[quarterKey];
     const prevQ = prevQuarterKey ? state.dataset.quarters[prevQuarterKey] : null;
     const rows = [];
     for (const code of Object.keys(q.offices)) {
       if (code === "TOTAL") continue;
       const o = q.offices[code];
-      const { received: r, approved: a, denied: d, pending: p } = o.total;
+      const { received: r, approved: a, denied: d, pending: p } = o[bucket];
       const { approved: ra, denied: rd } = o[rateBucket];
       if (r == null || a == null || d == null || p == null) continue;
       const decided = a + d;
@@ -439,8 +483,8 @@
       const denialRate = ra != null && rd != null && rateDecided > 0 ? (rd / rateDecided) * 100 : null;
       let qoqReceived = null;
       const prevO = prevQ ? prevQ.offices[code] : null;
-      if (prevO && prevO.total.received) {
-        qoqReceived = ((r - prevO.total.received) / prevO.total.received) * 100;
+      if (prevO && prevO[bucket].received) {
+        qoqReceived = ((r - prevO[bucket].received) / prevO[bucket].received) * 100;
       }
       rows.push({
         code,
@@ -550,7 +594,8 @@
     const { latestKey, offices } = computeOutliers();
     const quarter = state.dataset.quarters[latestKey];
 
-    document.getElementById("outliers-quarter-label").textContent = `— ${quarter.label}`;
+    const categorySuffix = state.categoryKey === "total" ? "" : `, ${categoryLabel(state.categoryKey)} only`;
+    document.getElementById("outliers-quarter-label").textContent = `— ${quarter.label}${categorySuffix}`;
     document.getElementById("outliers-note").textContent =
       `Offices whose denial rate, completion efficiency, backlog clearance time, or quarter-over-quarter ` +
       `application volume sits statistically far from their peers this quarter (at least 100 decided cases ` +
@@ -624,9 +669,10 @@
       { label: "Pending (end of quarter)", field: "pending", sentiment: "neutral" },
     ];
 
+    const bucket = activeBucket();
     for (const t of tiles) {
-      const val = last ? last.total[t.field] : null;
-      const prevVal = prev ? prev.total[t.field] : null;
+      const val = last ? last[bucket][t.field] : null;
+      const prevVal = prev ? prev[bucket][t.field] : null;
       const div = document.createElement("div");
       div.className = "stat-tile";
 
@@ -793,9 +839,10 @@
   // ---------- Flow chart ----------
   function renderFlowChart() {
     const labels = quarterLabels();
-    const received = seriesFor("received", "total");
-    const approved = seriesFor("approved", "total");
-    const denied = seriesFor("denied", "total");
+    const bucket = activeBucket();
+    const received = seriesFor("received", bucket);
+    const approved = seriesFor("approved", bucket);
+    const denied = seriesFor("denied", bucket);
     const availability = officeAvailability();
 
     renderLegend("flow-legend", [
@@ -834,7 +881,7 @@
 
     const flowTableLabels = quarterLabelsForTable();
     renderTable("flow-table-wrap", {
-      caption: "Applications received, approved, denied by quarter (Total)",
+      caption: `Applications received, approved, denied by quarter (${categoryLabel(bucket)})`,
       columns: ["Quarter", "Received", "Approved", "Denied"],
       rows: state.quarterKeys.map((k, i) => [
         flowTableLabels[i],
@@ -848,7 +895,8 @@
   // ---------- Pending chart ----------
   function renderPendingChart() {
     const labels = quarterLabels();
-    const pending = seriesFor("pending", "total");
+    const bucket = activeBucket();
+    const pending = seriesFor("pending", bucket);
     const availability = officeAvailability();
 
     destroyChart("pending");
@@ -882,7 +930,7 @@
 
     const pendingTableLabels = quarterLabelsForTable();
     renderTable("pending-table-wrap", {
-      caption: "Pending cases at quarter end (Total)",
+      caption: `Pending cases at quarter end (${categoryLabel(bucket)})`,
       columns: ["Quarter", "Pending"],
       rows: state.quarterKeys.map((k, i) => [pendingTableLabels[i], pending[i]]),
     });
@@ -938,7 +986,10 @@
 
     const rateTableLabels = quarterLabelsForTable();
     renderTable("rate-table-wrap", {
-      caption: `Approval / denial rate, ${formConfig().rateBucketLabel}`,
+      caption:
+        state.categoryKey === "total"
+          ? `Approval / denial rate, ${formConfig().rateBucketLabel}`
+          : `Approval / denial rate, ${categoryLabel(state.categoryKey)} category`,
       columns: ["Quarter", "Approval rate", "Denial rate"],
       rows: state.quarterKeys.map((k, i) => [
         rateTableLabels[i],
@@ -997,7 +1048,7 @@
 
     const efficiencyTableLabels = quarterLabelsForTable();
     renderTable("efficiency-table-wrap", {
-      caption: "Efficiency (completions ÷ received, Total)",
+      caption: `Efficiency (completions ÷ received, ${categoryLabel(activeBucket())})`,
       columns: ["Quarter", "Efficiency"],
       rows: state.quarterKeys.map((k, i) => [
         efficiencyTableLabels[i],
@@ -1043,7 +1094,7 @@
 
     const backlogTableLabels = quarterLabelsForTable();
     renderTable("backlog-table-wrap", {
-      caption: "Backlog clearance time in months (pending ÷ completions × 3, Total)",
+      caption: `Backlog clearance time in months (pending ÷ completions × 3, ${categoryLabel(activeBucket())})`,
       columns: ["Quarter", "Backlog clearance (months)"],
       rows: state.quarterKeys.map((k, i) => [
         backlogTableLabels[i],
@@ -1062,11 +1113,17 @@
   }
 
   // ---------- Table view ----------
-  function renderTable(containerId, { columns, rows }) {
+  function renderTable(containerId, { caption, columns, rows }) {
     const container = document.getElementById(containerId);
     container.innerHTML = "";
     const table = document.createElement("table");
     table.className = "data-table";
+
+    if (caption) {
+      const captionEl = document.createElement("caption");
+      captionEl.textContent = caption;
+      table.appendChild(captionEl);
+    }
 
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
@@ -1153,6 +1210,22 @@
     for (const btn of document.querySelectorAll("#form-toggle button")) {
       btn.setAttribute("aria-selected", String(btn.dataset.form === state.formKey));
     }
+
+    const hasCategories = !!(cfg.categories && cfg.categories.length);
+    document.getElementById("category-toggle").hidden = !hasCategories;
+    for (const btn of document.querySelectorAll("#category-toggle button")) {
+      btn.setAttribute("aria-selected", String(btn.dataset.category === state.categoryKey));
+    }
+    const note = document.getElementById("category-note");
+    if (hasCategories && state.categoryKey !== "total") {
+      note.hidden = false;
+      note.textContent =
+        `Showing ${categoryLabel(state.categoryKey)} only — every chart, stat, and the outlier panel below ` +
+        `reflect this category, not just a filtered view of the combined totals. Switch back to "All ` +
+        `categories" above to see all four combined.`;
+    } else {
+      note.hidden = true;
+    }
   }
 
   function initFormToggle() {
@@ -1161,9 +1234,22 @@
       if (!btn || btn.dataset.form === state.formKey) return;
       state.formKey = btn.dataset.form;
       state.selectedCode = "TOTAL"; // resolved against the new form's offices in populateOfficeOptions
+      state.categoryKey = "total"; // the other form's category keys (if any) don't apply here
       applyFormText();
       await loadData();
       populateOfficeOptions();
+      syncUrl();
+      renderAll();
+      renderOutlierPanel();
+    });
+  }
+
+  function initCategoryToggle() {
+    document.getElementById("category-toggle").addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-category]");
+      if (!btn || btn.dataset.category === state.categoryKey) return;
+      state.categoryKey = btn.dataset.category;
+      applyFormText();
       syncUrl();
       renderAll();
       renderOutlierPanel();
@@ -1194,9 +1280,14 @@
     if (officeFromUrl) {
       state.selectedCode = officeFromUrl;
     }
+    const categoryFromUrl = params.get("category");
+    if (categoryFromUrl && formConfig().categories && formConfig().categories.includes(categoryFromUrl)) {
+      state.categoryKey = categoryFromUrl;
+    }
 
     applyFormText();
     initFormToggle();
+    initCategoryToggle();
     await loadData();
     populateOfficeOptions();
     initOfficeSelectListeners();

@@ -141,6 +141,9 @@ h1 {
   border-radius: 10px;
   margin-bottom: 16px;
 }
+.form-toggle[hidden] {
+  display: none;
+}
 
 .form-toggle button {
   all: unset;
@@ -159,6 +162,14 @@ h1 {
   background: var(--page-plane);
   color: var(--text-primary);
   box-shadow: 0 0 0 1px var(--border);
+}
+
+.category-toggle {
+  flex-wrap: wrap;
+}
+.category-toggle button {
+  font-size: 0.8rem;
+  padding: 6px 12px;
 }
 
 .filter-row {
@@ -315,6 +326,14 @@ table.data-table {
   border-collapse: collapse;
   width: 100%;
   font-size: 0.82rem;
+}
+
+table.data-table caption {
+  text-align: left;
+  caption-side: top;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  margin-bottom: 8px;
 }
 
 table.data-table th,
