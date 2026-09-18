@@ -77,6 +77,35 @@
     <div class="data-table-wrap" id="rate-table-wrap" hidden></div>
   </section>
 
+  <section class="chart-card">
+    <h2>Efficiency: completions ÷ received</h2>
+    <p class="chart-note">
+      Completions (approved + denied, Total) divided by applications received (Total) that quarter. Values
+      below 1 mean the office completed fewer cases than it received — the backlog grew that quarter; above 1
+      means it worked down more than came in.
+    </p>
+    <div class="chart-wrap"><canvas id="efficiency-chart"></canvas></div>
+    <div class="chart-footer">
+      <button class="table-toggle" data-target="efficiency-table-wrap" type="button">View as table</button>
+    </div>
+    <div class="data-table-wrap" id="efficiency-table-wrap" hidden></div>
+  </section>
+
+  <section class="chart-card">
+    <h2>Backlog clearance time (months)</h2>
+    <p class="chart-note">
+      A rough capacity gauge, not a forecast: pending (Total) ÷ completions (approved + denied, Total) × 3
+      months — roughly how long it would take to clear the current backlog at that quarter's completion pace,
+      if receipts and staffing stayed flat. Actual clearance time depends on future receipt volume and
+      staffing changes.
+    </p>
+    <div class="chart-wrap"><canvas id="backlog-chart"></canvas></div>
+    <div class="chart-footer">
+      <button class="table-toggle" data-target="backlog-table-wrap" type="button">View as table</button>
+    </div>
+    <div class="data-table-wrap" id="backlog-table-wrap" hidden></div>
+  </section>
+
   <footer class="site-footer">
     <p>
       Source: U.S. Department of Homeland Security, USCIS quarterly Form N-400 performance reports by field
