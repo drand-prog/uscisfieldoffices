@@ -4,13 +4,70 @@
   const fmtInt = new Intl.NumberFormat("en-US");
   const fmtPct = (v) => (v === null || v === undefined ? "—" : `${v.toFixed(1)}%`);
 
+  // Both forms share this report family's shape (a TOTAL row, offices grouped
+  // by state, several category blocks each with received/approved/denied/
+  // pending) but differ in which bucket is reliable enough to compute an
+  // approval/denial rate from directly -- N-400's "Total" mixes in a Military
+  // Naturalization category with heavy small-count suppression, so its rate
+  // chart uses the cleaner non-military "nat" bucket instead; I-485 has no
+  // such suppression in any bucket, so "total" is fine there.
+  const FORMS = {
+    n400: {
+      key: "n400",
+      label: "N-400 (Naturalization)",
+      dataUrl: "data/n400_quarterly.json",
+      pageTitle: "USCIS N-400 Field Office Dashboard",
+      pageDescription:
+        "Quarterly N-400 naturalization application, approval, denial, and pending trends by USCIS field office.",
+      h1: "USCIS N-400 Field Office Dashboard",
+      subtitle:
+        "Quarterly Form N-400 (Application for Naturalization) volumes by USCIS field office: applications received, approved, denied, and pending at quarter end.",
+      officeFilterLabel: "Search field offices",
+      rateBucket: "nat",
+      rateBucketLabel: "non-military Naturalization category",
+      flowChartNote:
+        "Received, approved, and denied counts for the quarter (Naturalization + Military Naturalization combined). These are flow counts — each point covers only that quarter's activity, not a running total.",
+      rateChartNote:
+        "Share of decided cases (approved + denied) that quarter, computed from the non-military Naturalization category only. Military naturalization is excluded here because ~15% of its office-level cells are suppressed by USCIS for small counts, which would make a rate computed from it unreliable at the office level.",
+      footerSource:
+        "Source: U.S. Department of Homeland Security, USCIS quarterly Form N-400 performance reports by field office, FY2015 Q1 through FY2026 Q3 (47 quarters). USCIS has changed this report's format several times over that span — spreadsheets (FY2015–2018, FY2022–2026) and PDFs (FY2019–2021) — see the data-quality note above the charts for PDF-derived quarters. “D” indicates a value suppressed by USCIS disclosure standards for small counts; suppressed cells are shown as gaps, not zero. The set of field offices has also changed over time as offices opened, closed, or were renamed; an office is selectable here if it appears in any quarter, and its chart will show gaps for quarters before it opened or after it closed.",
+      showFy2026Q3Note: true,
+    },
+    i485: {
+      key: "i485",
+      label: "I-485 (Adjustment of Status)",
+      dataUrl: "data/i485_quarterly.json",
+      pageTitle: "USCIS I-485 Field Office Dashboard",
+      pageDescription:
+        "Quarterly I-485 adjustment-of-status application, approval, denial, and pending trends by USCIS field office and service center.",
+      h1: "USCIS I-485 Field Office Dashboard",
+      subtitle:
+        "Quarterly Form I-485 (Application to Register Permanent Residence or Adjust Status) volumes by USCIS field office and service center: applications received, approved, denied, and pending at quarter end, across Family-based, Employment-based, Humanitarian-based, and Other categories.",
+      officeFilterLabel: "Search offices and service centers",
+      rateBucket: "total",
+      rateBucketLabel: "Total category (all four admission categories combined)",
+      flowChartNote:
+        "Received, approved, and denied counts for the quarter, summed across all four admission categories (Family-based, Employment-based, Humanitarian-based, Other). These are flow counts — each point covers only that quarter's activity, not a running total.",
+      rateChartNote:
+        "Share of decided cases (approved + denied) that quarter, computed from the Total category (all four admission categories combined). Unlike N-400, no I-485 category shows meaningful small-count suppression, so Total is used directly rather than excluding a category.",
+      footerSource:
+        "Source: U.S. Department of Homeland Security, USCIS quarterly Form I-485 performance reports by field office and service center, FY2025 Q4 through FY2026 Q3. “D” indicates a value suppressed by USCIS disclosure standards for small counts; suppressed cells are shown as gaps, not zero. An office is selectable here if it appears in any quarter, and its chart will show gaps for quarters before it opened or after it closed.",
+      showFy2026Q3Note: false,
+    },
+  };
+
   const state = {
+    formKey: "n400",
     dataset: null,
     quarterKeys: [],
     officeIndex: [], // [{code, name, state}]
     selectedCode: "TOTAL",
     charts: {},
   };
+
+  function formConfig() {
+    return FORMS[state.formKey];
+  }
 
   function cssVar(name) {
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -116,36 +173,45 @@
 
   // ---------- Data loading ----------
   async function loadData() {
-    const res = await fetch("data/n400_quarterly.json");
+    const res = await fetch(formConfig().dataUrl);
     const dataset = await res.json();
     state.dataset = dataset;
     state.quarterKeys = Object.keys(dataset.quarters); // already chronological from ingest script
 
     // Union offices across every quarter (not just the latest) so offices that
-    // closed or were renamed earlier in the 2015-2026 span stay selectable.
+    // closed or were renamed earlier in the dataset's span stay selectable.
     // Each office's displayed name/state uses its most recent occurrence.
     const officeMap = new Map();
+    let totalLabel = "All Offices (National total)";
     for (const qk of state.quarterKeys) {
       const q = dataset.quarters[qk];
       for (const code of Object.keys(q.offices)) {
-        if (code === "TOTAL") continue;
         const o = q.offices[code];
+        if (code === "TOTAL") {
+          totalLabel = o.name.trim();
+          continue;
+        }
         officeMap.set(code, { code, name: o.name.trim(), state: o.state });
       }
     }
     const offices = Array.from(officeMap.values());
     offices.sort((a, b) => a.state.localeCompare(b.state) || a.name.localeCompare(b.name));
     state.officeIndex = offices;
+    state.totalLabel = totalLabel;
   }
 
   // ---------- Office picker ----------
-  function buildOfficeSelect() {
+  // Rebuilds the <option> list -- called on load and every form switch, since
+  // the two forms' office sets differ (I-485 includes service centers N-400
+  // doesn't have at all). Listener setup is separate (initOfficeSelectListeners,
+  // called once) so switching forms repeatedly doesn't stack duplicate handlers.
+  function populateOfficeOptions() {
     const select = document.getElementById("office-select");
     select.innerHTML = "";
 
     const allOpt = document.createElement("option");
     allOpt.value = "TOTAL";
-    allOpt.textContent = "All Field Offices (National total)";
+    allOpt.textContent = state.totalLabel || "All Offices (National total)";
     select.appendChild(allOpt);
 
     let currentGroup = null;
@@ -165,16 +231,28 @@
 
     const params = new URLSearchParams(location.search);
     const fromUrl = params.get("office");
-    if (fromUrl && (fromUrl === "TOTAL" || state.officeIndex.some((o) => o.code === fromUrl))) {
+    const validCodes = new Set(["TOTAL", ...state.officeIndex.map((o) => o.code)]);
+    if (fromUrl && validCodes.has(fromUrl)) {
       state.selectedCode = fromUrl;
+    } else if (!validCodes.has(state.selectedCode)) {
+      // Switched form and the previously selected code doesn't exist here
+      // (e.g. an I-485 service center has no N-400 equivalent).
+      state.selectedCode = "TOTAL";
     }
     select.value = state.selectedCode;
 
+    const filterInput = document.getElementById("office-filter");
+    filterInput.value = "";
+    for (const opt of select.querySelectorAll("option, optgroup")) {
+      opt.hidden = false;
+    }
+  }
+
+  function initOfficeSelectListeners() {
+    const select = document.getElementById("office-select");
     select.addEventListener("change", () => {
       state.selectedCode = select.value;
-      const url = new URL(location.href);
-      url.searchParams.set("office", state.selectedCode);
-      history.replaceState(null, "", url);
+      syncUrl();
       renderAll();
     });
 
@@ -196,8 +274,17 @@
     });
   }
 
+  function syncUrl() {
+    const url = new URL(location.href);
+    url.searchParams.set("form", state.formKey);
+    url.searchParams.set("office", state.selectedCode);
+    history.replaceState(null, "", url);
+  }
+
   function currentOfficeMeta() {
-    if (state.selectedCode === "TOTAL") return "National total across all 93 field offices.";
+    if (state.selectedCode === "TOTAL") {
+      return `National total across all ${state.officeIndex.length} offices.`;
+    }
     const o = state.officeIndex.find((x) => x.code === state.selectedCode);
     return o ? `${o.name.trim()}, ${o.state} — office code ${o.code}` : "";
   }
@@ -247,8 +334,9 @@
   }
 
   function rateSeries() {
-    const approved = seriesFor("approved", "nat");
-    const denied = seriesFor("denied", "nat");
+    const bucket = formConfig().rateBucket;
+    const approved = seriesFor("approved", bucket);
+    const denied = seriesFor("denied", bucket);
     const availability = officeAvailability();
     const approvalRate = [];
     const denialRate = [];
@@ -334,6 +422,7 @@
   }
 
   function computeOfficeMetricsForQuarter(quarterKey, prevQuarterKey) {
+    const rateBucket = formConfig().rateBucket;
     const q = state.dataset.quarters[quarterKey];
     const prevQ = prevQuarterKey ? state.dataset.quarters[prevQuarterKey] : null;
     const rows = [];
@@ -341,13 +430,13 @@
       if (code === "TOTAL") continue;
       const o = q.offices[code];
       const { received: r, approved: a, denied: d, pending: p } = o.total;
-      const { approved: na, denied: nd } = o.nat;
+      const { approved: ra, denied: rd } = o[rateBucket];
       if (r == null || a == null || d == null || p == null) continue;
       const decided = a + d;
       const efficiency = r > 0 ? decided / r : null;
       const backlogMonths = decided > 0 ? (p / decided) * 3 : null;
-      const natDecided = (na || 0) + (nd || 0);
-      const denialRate = na != null && nd != null && natDecided > 0 ? (nd / natDecided) * 100 : null;
+      const rateDecided = (ra || 0) + (rd || 0);
+      const denialRate = ra != null && rd != null && rateDecided > 0 ? (rd / rateDecided) * 100 : null;
       let qoqReceived = null;
       const prevO = prevQ ? prevQ.offices[code] : null;
       if (prevO && prevO.total.received) {
@@ -849,7 +938,7 @@
 
     const rateTableLabels = quarterLabelsForTable();
     renderTable("rate-table-wrap", {
-      caption: "Approval / denial rate, non-military Naturalization category",
+      caption: `Approval / denial rate, ${formConfig().rateBucketLabel}`,
       columns: ["Quarter", "Approval rate", "Denial rate"],
       rows: state.quarterKeys.map((k, i) => [
         rateTableLabels[i],
@@ -1048,6 +1137,39 @@
       `original PDF before relying on them.`;
   }
 
+  // ---------- Form-specific page text ----------
+  function applyFormText() {
+    const cfg = formConfig();
+    document.getElementById("page-title").textContent = cfg.pageTitle;
+    document.getElementById("page-description").setAttribute("content", cfg.pageDescription);
+    document.getElementById("page-h1").textContent = cfg.h1;
+    document.getElementById("page-subtitle").textContent = cfg.subtitle;
+    document.getElementById("office-filter-label").textContent = cfg.officeFilterLabel;
+    document.getElementById("flow-chart-note").textContent = cfg.flowChartNote;
+    document.getElementById("rate-chart-note").textContent = cfg.rateChartNote;
+    document.getElementById("footer-source").textContent = cfg.footerSource;
+    document.getElementById("footer-fy2026q3-note").hidden = !cfg.showFy2026Q3Note;
+
+    for (const btn of document.querySelectorAll("#form-toggle button")) {
+      btn.setAttribute("aria-selected", String(btn.dataset.form === state.formKey));
+    }
+  }
+
+  function initFormToggle() {
+    document.getElementById("form-toggle").addEventListener("click", async (ev) => {
+      const btn = ev.target.closest("button[data-form]");
+      if (!btn || btn.dataset.form === state.formKey) return;
+      state.formKey = btn.dataset.form;
+      state.selectedCode = "TOTAL"; // resolved against the new form's offices in populateOfficeOptions
+      applyFormText();
+      await loadData();
+      populateOfficeOptions();
+      syncUrl();
+      renderAll();
+      renderOutlierPanel();
+    });
+  }
+
   // ---------- Render orchestration ----------
   function renderAll() {
     document.getElementById("office-meta").textContent = currentOfficeMeta();
@@ -1062,9 +1184,24 @@
 
   async function main() {
     initTheme();
+
+    const params = new URLSearchParams(location.search);
+    const formFromUrl = params.get("form");
+    if (formFromUrl && FORMS[formFromUrl]) {
+      state.formKey = formFromUrl;
+    }
+    const officeFromUrl = params.get("office");
+    if (officeFromUrl) {
+      state.selectedCode = officeFromUrl;
+    }
+
+    applyFormText();
+    initFormToggle();
     await loadData();
-    buildOfficeSelect();
+    populateOfficeOptions();
+    initOfficeSelectListeners();
     initTableToggles();
+    syncUrl();
     renderAll();
     renderOutlierPanel();
   }

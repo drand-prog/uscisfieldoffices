@@ -132,6 +132,35 @@ h1 {
   color: var(--text-primary);
 }
 
+.form-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 16px;
+}
+
+.form-toggle button {
+  all: unset;
+  cursor: pointer;
+  box-sizing: border-box;
+  padding: 7px 14px;
+  border-radius: 7px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.form-toggle button:hover {
+  color: var(--text-primary);
+}
+.form-toggle button[aria-selected="true"] {
+  background: var(--page-plane);
+  color: var(--text-primary);
+  box-shadow: 0 0 0 1px var(--border);
+}
+
 .filter-row {
   display: flex;
   flex-wrap: wrap;
