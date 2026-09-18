@@ -16,6 +16,87 @@
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   }
 
+  // ---------- Fiscal-year axis bands ----------
+  // Draws alternating background shading behind each fiscal year's quarters,
+  // plus a centered "FYxxxx" label in a reserved strip below the Q1-Q4 tick
+  // labels. Registered once globally; each chart opts in by setting
+  // options.plugins.yearBands.fiscalYears.
+  const yearBandsPlugin = {
+    id: "yearBands",
+    beforeDraw(chart, _args, opts) {
+      const fiscalYears = opts.fiscalYears;
+      if (!fiscalYears || !fiscalYears.length) return;
+      const { ctx, chartArea, scales } = chart;
+      const xScale = scales.x;
+      if (!chartArea) return;
+      const n = fiscalYears.length;
+      const step = n > 1 ? xScale.getPixelForValue(1) - xScale.getPixelForValue(0) : chartArea.width;
+      ctx.save();
+      let i = 0;
+      let bandIndex = 0;
+      while (i < n) {
+        let j = i;
+        while (j + 1 < n && fiscalYears[j + 1] === fiscalYears[i]) j++;
+        if (bandIndex % 2 === 1) {
+          const left = xScale.getPixelForValue(i) - step / 2;
+          const right = xScale.getPixelForValue(j) + step / 2;
+          ctx.fillStyle = opts.bandColor || "rgba(0,0,0,0.03)";
+          ctx.fillRect(left, chartArea.top, right - left, chartArea.bottom - chartArea.top);
+        }
+        i = j + 1;
+        bandIndex++;
+      }
+      ctx.restore();
+    },
+    afterDraw(chart, _args, opts) {
+      const fiscalYears = opts.fiscalYears;
+      if (!fiscalYears || !fiscalYears.length) return;
+      const { ctx, chartArea, scales } = chart;
+      const xScale = scales.x;
+      if (!chartArea) return;
+      const n = fiscalYears.length;
+      const labelBandHeight = opts.labelBandHeight || 16;
+      ctx.save();
+      ctx.fillStyle = opts.labelColor || "#898781";
+      ctx.font = opts.font || "10px system-ui, -apple-system, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      const y = xScale.bottom - labelBandHeight + 2;
+      const minGap = 6;
+      let prevRightEdge = -Infinity;
+      let i = 0;
+      while (i < n) {
+        let j = i;
+        while (j + 1 < n && fiscalYears[j + 1] === fiscalYears[i]) j++;
+        const cx = (xScale.getPixelForValue(i) + xScale.getPixelForValue(j)) / 2;
+        const text = `FY${fiscalYears[i]}`;
+        const halfWidth = ctx.measureText(text).width / 2;
+        // Skip (don't draw) a label that would collide with the previous
+        // one -- same overlap-avoidance idea as Chart.js's own tick
+        // autoSkip, which this custom-drawn row doesn't get for free.
+        if (cx - halfWidth >= prevRightEdge + minGap) {
+          ctx.fillText(text, cx, y);
+          prevRightEdge = cx + halfWidth;
+        }
+        i = j + 1;
+      }
+      ctx.restore();
+    },
+  };
+  Chart.register(yearBandsPlugin);
+
+  function fiscalYearsArray() {
+    return state.quarterKeys.map((k) => state.dataset.quarters[k].fy);
+  }
+
+  function yearBandsOptions() {
+    return {
+      fiscalYears: fiscalYearsArray(),
+      bandColor: cssVar("--year-band"),
+      labelColor: cssVar("--text-muted"),
+    };
+  }
+
   // ---------- Theme ----------
   function initTheme() {
     const saved = localStorage.getItem("theme");
@@ -189,6 +270,42 @@
     return { approvalRate, denialRate };
   }
 
+  // Completions (approved + denied) ÷ received, Total bucket. Below 1 means
+  // the office completed fewer cases than it received that quarter.
+  function efficiencySeries() {
+    const received = seriesFor("received", "total");
+    const approved = seriesFor("approved", "total");
+    const denied = seriesFor("denied", "total");
+    const availability = officeAvailability();
+    return state.quarterKeys.map((_k, i) => {
+      const r = received[i];
+      const a = approved[i];
+      const d = denied[i];
+      if (r == null || a == null || d == null || r === 0) {
+        return availability[i] ? null : undefined;
+      }
+      return (a + d) / r;
+    });
+  }
+
+  // Pending ÷ completions (approved + denied) × 3 months, Total bucket -- a
+  // rough "quarters of backlog, in months" capacity gauge.
+  function backlogMonthsSeries() {
+    const pending = seriesFor("pending", "total");
+    const approved = seriesFor("approved", "total");
+    const denied = seriesFor("denied", "total");
+    const availability = officeAvailability();
+    return state.quarterKeys.map((_k, i) => {
+      const p = pending[i];
+      const a = approved[i];
+      const d = denied[i];
+      if (p == null || a == null || d == null || a + d === 0) {
+        return availability[i] ? null : undefined;
+      }
+      return (p / (a + d)) * 3;
+    });
+  }
+
   // ---------- Stat tiles ----------
   function renderStats() {
     const row = document.getElementById("stat-row");
@@ -339,13 +456,35 @@
     );
   }
 
-  function denseXTicks() {
+  // A tick + short "Qn" label for every quarter that fits. autoSkip is
+  // width-aware and re-runs on resize, so a wide desktop chart shows every
+  // one of the 47 quarters while a narrow phone screen thins gracefully
+  // instead of rotating into an unreadable pile. A second row of "FYxxxx"
+  // labels grouping them is drawn by yearBandsPlugin in the space reserved
+  // by quarterXScale()'s afterFit.
+  function quarterXTicks() {
     return {
       autoSkip: true,
-      autoSkipPadding: 24,
+      autoSkipPadding: 6,
       maxRotation: 0,
+      minRotation: 0,
       color: cssVar("--text-muted"),
-      font: { size: 11 },
+      font: { size: 10 },
+      callback: (_value, index) => {
+        const k = state.quarterKeys[index];
+        const q = k ? state.dataset.quarters[k] : null;
+        return q ? `Q${q.quarter}` : "";
+      },
+    };
+  }
+
+  function quarterXScale() {
+    return {
+      grid: { display: false },
+      ticks: quarterXTicks(),
+      afterFit: (scale) => {
+        scale.height += 16;
+      },
     };
   }
 
@@ -382,9 +521,10 @@
         plugins: {
           legend: { display: false },
           tooltip: tooltipBase((v) => fmtInt.format(v), availability),
+          yearBands: yearBandsOptions(),
         },
         scales: {
-          x: { grid: { display: false }, ticks: denseXTicks() },
+          x: quarterXScale(),
           y: baseScales().y,
         },
       },
@@ -429,9 +569,10 @@
         plugins: {
           legend: { display: false },
           tooltip: tooltipBase((v) => fmtInt.format(v), availability),
+          yearBands: yearBandsOptions(),
         },
         scales: {
-          x: { grid: { display: false }, ticks: denseXTicks() },
+          x: quarterXScale(),
           y: baseScales().y,
         },
       },
@@ -474,9 +615,10 @@
         plugins: {
           legend: { display: false },
           tooltip: tooltipBase((v) => `${v.toFixed(1)}%`, availability),
+          yearBands: yearBandsOptions(),
         },
         scales: {
-          x: { grid: { display: false }, ticks: denseXTicks() },
+          x: quarterXScale(),
           y: {
             beginAtZero: true,
             max: 100,
@@ -500,6 +642,110 @@
         rateTableLabels[i],
         approvalRate[i] == null ? approvalRate[i] : `${approvalRate[i].toFixed(1)}%`,
         denialRate[i] == null ? denialRate[i] : `${denialRate[i].toFixed(1)}%`,
+      ]),
+    });
+  }
+
+  // ---------- Efficiency chart ----------
+  function renderEfficiencyChart() {
+    const labels = quarterLabels();
+    const efficiency = efficiencySeries();
+    const availability = officeAvailability();
+    const reference = labels.map(() => 1);
+
+    destroyChart("efficiency");
+    const ctx = document.getElementById("efficiency-chart").getContext("2d");
+    state.charts.efficiency = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [
+          lineDataset("Efficiency", efficiency, cssVar("--series-efficiency")),
+          lineDataset("Reference", reference, cssVar("--reference-line"), {
+            borderWidth: 1,
+            borderDash: [4, 4],
+            pointRadius: 0,
+            pointHoverRadius: 0,
+            pointHitRadius: 0,
+          }),
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: Object.assign(tooltipBase((v) => v.toFixed(2), availability), {
+            filter: (item) => item.dataset.label !== "Reference",
+          }),
+          yearBands: yearBandsOptions(),
+        },
+        scales: {
+          x: quarterXScale(),
+          y: {
+            beginAtZero: true,
+            grid: { color: cssVar("--gridline") },
+            border: { color: cssVar("--baseline") },
+            ticks: { color: cssVar("--text-muted"), font: { size: 11 }, callback: (v) => v.toFixed(1) },
+          },
+        },
+      },
+    });
+
+    const efficiencyTableLabels = quarterLabelsForTable();
+    renderTable("efficiency-table-wrap", {
+      caption: "Efficiency (completions ÷ received, Total)",
+      columns: ["Quarter", "Efficiency"],
+      rows: state.quarterKeys.map((k, i) => [
+        efficiencyTableLabels[i],
+        efficiency[i] == null ? efficiency[i] : efficiency[i].toFixed(2),
+      ]),
+    });
+  }
+
+  // ---------- Backlog clearance time chart ----------
+  function renderBacklogChart() {
+    const labels = quarterLabels();
+    const backlog = backlogMonthsSeries();
+    const availability = officeAvailability();
+
+    destroyChart("backlog");
+    const ctx = document.getElementById("backlog-chart").getContext("2d");
+    state.charts.backlog = new Chart(ctx, {
+      type: "line",
+      data: {
+        labels,
+        datasets: [lineDataset("Backlog clearance time", backlog, cssVar("--series-backlog"))],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: tooltipBase((v) => `${v.toFixed(1)} mo`, availability),
+          yearBands: yearBandsOptions(),
+        },
+        scales: {
+          x: quarterXScale(),
+          y: {
+            beginAtZero: true,
+            grid: { color: cssVar("--gridline") },
+            border: { color: cssVar("--baseline") },
+            ticks: { color: cssVar("--text-muted"), font: { size: 11 }, callback: (v) => v.toFixed(0) },
+          },
+        },
+      },
+    });
+
+    const backlogTableLabels = quarterLabelsForTable();
+    renderTable("backlog-table-wrap", {
+      caption: "Backlog clearance time in months (pending ÷ completions × 3, Total)",
+      columns: ["Quarter", "Backlog clearance (months)"],
+      rows: state.quarterKeys.map((k, i) => [
+        backlogTableLabels[i],
+        backlog[i] == null ? backlog[i] : backlog[i].toFixed(1),
       ]),
     });
   }
@@ -597,6 +843,8 @@
     renderFlowChart();
     renderPendingChart();
     renderRateChart();
+    renderEfficiencyChart();
+    renderBacklogChart();
   }
 
   async function main() {

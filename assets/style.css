@@ -17,6 +17,10 @@
   --series-pending: #2a78d6;
   --series-approval-rate: #2a78d6;
   --series-denial-rate: #e34948;
+  --series-efficiency: #2a78d6;
+  --series-backlog: #4a3aa7;
+  --year-band: rgba(11, 11, 11, 0.035);
+  --reference-line: #c3c2b7;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -39,6 +43,10 @@
     --series-pending: #3987e5;
     --series-approval-rate: #3987e5;
     --series-denial-rate: #e66767;
+    --series-efficiency: #3987e5;
+    --series-backlog: #9085e9;
+    --year-band: rgba(255, 255, 255, 0.045);
+    --reference-line: #383835;
   }
 }
 
@@ -61,6 +69,10 @@
   --series-pending: #3987e5;
   --series-approval-rate: #3987e5;
   --series-denial-rate: #e66767;
+  --series-efficiency: #3987e5;
+  --series-backlog: #9085e9;
+  --year-band: rgba(255, 255, 255, 0.045);
+  --reference-line: #383835;
 }
 
 * {
