@@ -23,6 +23,7 @@
   --reference-line: #c3c2b7;
   --party-d: rgba(42, 120, 214, 0.14);
   --party-r: rgba(227, 73, 72, 0.14);
+  --milestone-marker: #c98a1f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -51,6 +52,7 @@
     --reference-line: #383835;
     --party-d: rgba(57, 135, 229, 0.18);
     --party-r: rgba(230, 103, 103, 0.18);
+    --milestone-marker: #e3a83f;
   }
 }
 
@@ -79,6 +81,7 @@
   --reference-line: #383835;
   --party-d: rgba(57, 135, 229, 0.18);
   --party-r: rgba(230, 103, 103, 0.18);
+  --milestone-marker: #e3a83f;
 }
 
 * {
