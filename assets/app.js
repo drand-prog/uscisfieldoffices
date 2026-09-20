@@ -121,9 +121,45 @@
   // plus a centered "FYxxxx" label in a reserved strip below the Q1-Q4 tick
   // labels. Registered once globally; each chart opts in by setting
   // options.plugins.yearBands.fiscalYears.
+  // Draws a colored strip behind the Q1-Q4 tick-label row (between
+  // chartArea.bottom and the reserved FY-label strip) indicating which
+  // party held the presidency as of that quarter's period end. Grouped into
+  // runs of consecutive same-party quarters, same approach as the FY bands
+  // above -- doesn't overlap them since the FY bands only cover the plot
+  // area (chartArea.top..chartArea.bottom), not the tick-label row below it.
+  function drawPartyStrip(chart, opts) {
+    const parties = opts.parties;
+    if (!parties || !parties.length) return;
+    const { ctx, chartArea, scales } = chart;
+    const xScale = scales.x;
+    if (!chartArea) return;
+    const n = parties.length;
+    const step = n > 1 ? xScale.getPixelForValue(1) - xScale.getPixelForValue(0) : chartArea.width;
+    const labelBandHeight = opts.labelBandHeight || 16;
+    const top = chartArea.bottom;
+    const bottom = xScale.bottom - labelBandHeight;
+    if (bottom <= top) return;
+    ctx.save();
+    let i = 0;
+    while (i < n) {
+      let j = i;
+      while (j + 1 < n && parties[j + 1] === parties[i]) j++;
+      const color = opts.partyColors && opts.partyColors[parties[i]];
+      if (color) {
+        const left = xScale.getPixelForValue(i) - step / 2;
+        const right = xScale.getPixelForValue(j) + step / 2;
+        ctx.fillStyle = color;
+        ctx.fillRect(left, top, right - left, bottom - top);
+      }
+      i = j + 1;
+    }
+    ctx.restore();
+  }
+
   const yearBandsPlugin = {
     id: "yearBands",
     beforeDraw(chart, _args, opts) {
+      drawPartyStrip(chart, opts);
       const fiscalYears = opts.fiscalYears;
       if (!fiscalYears || !fiscalYears.length) return;
       const { ctx, chartArea, scales } = chart;
@@ -189,11 +225,37 @@
     return state.quarterKeys.map((k) => state.dataset.quarters[k].fy);
   }
 
+  // Presidential party in office as of each quarter's period end. Using
+  // periodEnd (rather than fiscal year/quarter number) naturally implements
+  // "Q2 of the inauguration FY counts as the incoming president" with no
+  // special-casing: Q2 always ends March 31, after the January 20
+  // inauguration, while Q1 always ends December 31, before it.
+  const ADMINISTRATIONS = [
+    { start: "2009-01-20", party: "D" }, // Obama
+    { start: "2017-01-20", party: "R" }, // Trump
+    { start: "2021-01-20", party: "D" }, // Biden
+    { start: "2025-01-20", party: "R" }, // Trump
+  ];
+
+  function partyForPeriodEnd(periodEnd) {
+    let party = null;
+    for (const admin of ADMINISTRATIONS) {
+      if (periodEnd >= admin.start) party = admin.party;
+    }
+    return party;
+  }
+
+  function partiesArray() {
+    return state.quarterKeys.map((k) => partyForPeriodEnd(state.dataset.quarters[k].periodEnd));
+  }
+
   function yearBandsOptions() {
     return {
       fiscalYears: fiscalYearsArray(),
       bandColor: cssVar("--year-band"),
       labelColor: cssVar("--text-muted"),
+      parties: partiesArray(),
+      partyColors: { D: cssVar("--party-d"), R: cssVar("--party-r") },
     };
   }
 

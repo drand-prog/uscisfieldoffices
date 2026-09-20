@@ -21,6 +21,8 @@
   --series-backlog: #4a3aa7;
   --year-band: rgba(11, 11, 11, 0.035);
   --reference-line: #c3c2b7;
+  --party-d: rgba(42, 120, 214, 0.14);
+  --party-r: rgba(227, 73, 72, 0.14);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -47,6 +49,8 @@
     --series-backlog: #9085e9;
     --year-band: rgba(255, 255, 255, 0.045);
     --reference-line: #383835;
+    --party-d: rgba(57, 135, 229, 0.18);
+    --party-r: rgba(230, 103, 103, 0.18);
   }
 }
 
@@ -73,6 +77,8 @@
   --series-backlog: #9085e9;
   --year-band: rgba(255, 255, 255, 0.045);
   --reference-line: #383835;
+  --party-d: rgba(57, 135, 229, 0.18);
+  --party-r: rgba(230, 103, 103, 0.18);
 }
 
 * {
