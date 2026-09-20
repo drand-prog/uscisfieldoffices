@@ -189,6 +189,19 @@ one quarter (see Data-quality notes).
   URL (`?yearMode=cy`) like the other view state. The administration
   shading is unaffected by this toggle since it's keyed off `periodEnd`
   directly, not the fiscal/calendar quarter label.
+- **Policy milestone markers:** every chart marks five dated USCIS policy
+  changes (`POLICY_MILESTONES` in `assets/app.js`) with a small dot in
+  whichever quarter each date falls, found via `quarterIndexForDate()`
+  matching the date against each quarter's `periodStart`/`periodEnd`. Each
+  milestone is its own Chart.js point dataset on a dedicated, hidden 0-1
+  axis (`yMilestone`) so the dot always sits near the top of the plot and
+  never affects the chart's real y-scale; when two milestones land in the
+  same quarter (the 2020 fee rule and the 2020 civics test both fall in
+  FY2021 Q1) they're stacked at different heights so both dots are visible
+  and both show up as separate tooltip lines. The explanation shown on
+  hover comes from `tooltipBase()`'s label callback special-casing any
+  dataset flagged `isMilestone`; a new date only needs an entry added to
+  `POLICY_MILESTONES`, nothing else.
 
 ## Local preview
 

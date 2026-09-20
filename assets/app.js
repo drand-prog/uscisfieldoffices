@@ -275,6 +275,71 @@
     };
   }
 
+  // ---------- Policy milestone markers ----------
+  // A handful of dated USCIS policy changes, shown as a small dot on every
+  // chart in whichever quarter each date falls in. Drawn as ordinary Chart.js
+  // point datasets on a dedicated, hidden 0-1 axis (yMilestone) so they never
+  // affect each chart's real y-scale -- the dot always sits near the top of
+  // the plot regardless of what the data itself is doing that quarter.
+  const POLICY_MILESTONES = [
+    { date: "2016-12-23", text: "2016 Final Fee Rule effective date: December 23, 2016" },
+    { date: "2020-10-02", text: "2020 Final Fee Rule effective date: October 2, 2020" },
+    { date: "2024-04-01", text: "2024 Final Fee Rule effective date: April 1, 2024" },
+    { date: "2020-12-01", text: "2020 civics test implementation: December 1, 2020" },
+    { date: "2025-10-20", text: "2025 civics test implementation: October 20, 2025" },
+  ];
+
+  function quarterIndexForDate(dateStr) {
+    return state.quarterKeys.findIndex((k) => {
+      const q = state.dataset.quarters[k];
+      return dateStr >= q.periodStart && dateStr <= q.periodEnd;
+    });
+  }
+
+  // One Chart.js point dataset per milestone that falls within the loaded
+  // quarters (dates outside the dataset's range are skipped rather than
+  // clamped to an edge quarter they didn't actually occur in). When two
+  // milestones land in the same quarter (the 2020 fee rule and the 2020
+  // civics test both fall in FY2021 Q1), each gets its own dataset so
+  // Chart.js's index-mode tooltip lists both as separate lines instead of
+  // one overwriting the other, and they're stacked vertically so both dots
+  // are visible instead of drawing on top of each other.
+  function milestoneDatasets() {
+    const n = state.quarterKeys.length;
+    const stackCountByIndex = new Map();
+    const color = cssVar("--milestone-marker");
+    const datasets = [];
+    for (const m of POLICY_MILESTONES) {
+      const idx = quarterIndexForDate(m.date);
+      if (idx === -1) continue;
+      const stack = stackCountByIndex.get(idx) || 0;
+      stackCountByIndex.set(idx, stack + 1);
+      const data = new Array(n).fill(null);
+      data[idx] = 0.92 - stack * 0.16;
+      datasets.push({
+        type: "line",
+        label: "Policy milestone",
+        data,
+        showLine: false,
+        spanGaps: false,
+        yAxisID: "yMilestone",
+        pointStyle: "circle",
+        pointRadius: 5,
+        pointHoverRadius: 7,
+        pointBackgroundColor: color,
+        pointBorderColor: cssVar("--surface-1"),
+        pointBorderWidth: 1.5,
+        isMilestone: true,
+        milestoneText: m.text,
+      });
+    }
+    return datasets;
+  }
+
+  function milestoneAxis() {
+    return { display: false, min: 0, max: 1 };
+  }
+
   // ---------- Theme ----------
   function initTheme() {
     const saved = localStorage.getItem("theme");
@@ -867,6 +932,14 @@
     };
   }
 
+  // A milestone dataset is null at every quarter except the one it marks --
+  // exclude it from the tooltip everywhere else, or every hover on every
+  // chart would show a bogus "suppressed (D)  Policy milestone" line.
+  function tooltipItemFilter(item) {
+    if (!item.dataset.isMilestone) return true;
+    return item.parsed.y !== null && item.parsed.y !== undefined;
+  }
+
   function tooltipBase(valueFormatter, availability) {
     return {
       mode: "index",
@@ -880,8 +953,10 @@
       boxPadding: 4,
       titleFont: { size: 12, weight: "600" },
       bodyFont: { size: 12 },
+      filter: tooltipItemFilter,
       callbacks: {
         label: (ctx) => {
+          if (ctx.dataset.isMilestone) return ctx.dataset.milestoneText;
           const v = ctx.parsed.y;
           let shown;
           if (v === null || v === undefined) {
@@ -985,6 +1060,7 @@
           lineDataset("Received", received, cssVar("--series-received")),
           lineDataset("Approved", approved, cssVar("--series-approved")),
           lineDataset("Denied", denied, cssVar("--series-denied")),
+          ...milestoneDatasets(),
         ],
       },
       options: {
@@ -999,6 +1075,7 @@
         scales: {
           x: quarterXScale(),
           y: baseScales().y,
+          yMilestone: milestoneAxis(),
         },
       },
     });
@@ -1034,6 +1111,7 @@
             backgroundColor: hexToRgba(cssVar("--series-pending"), 0.1),
             fill: true,
           }),
+          ...milestoneDatasets(),
         ],
       },
       options: {
@@ -1048,6 +1126,7 @@
         scales: {
           x: quarterXScale(),
           y: baseScales().y,
+          yMilestone: milestoneAxis(),
         },
       },
     });
@@ -1072,7 +1151,10 @@
       type: "line",
       data: {
         labels,
-        datasets: [lineDataset("Denial rate", denialRate, cssVar("--series-denial-rate"))],
+        datasets: [
+          lineDataset("Denial rate", denialRate, cssVar("--series-denial-rate")),
+          ...milestoneDatasets(),
+        ],
       },
       options: {
         responsive: true,
@@ -1095,6 +1177,7 @@
               callback: (v) => `${v}%`,
             },
           },
+          yMilestone: milestoneAxis(),
         },
       },
     });
@@ -1154,6 +1237,7 @@
             categoryPercentage: 0.7,
             barPercentage: 0.9,
           },
+          ...milestoneDatasets(),
         ],
       },
       options: {
@@ -1176,6 +1260,7 @@
               callback: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)}pp`,
             },
           },
+          yMilestone: milestoneAxis(),
         },
       },
     });
@@ -1214,6 +1299,7 @@
             pointHoverRadius: 0,
             pointHitRadius: 0,
           }),
+          ...milestoneDatasets(),
         ],
       },
       options: {
@@ -1223,7 +1309,7 @@
         plugins: {
           legend: { display: false },
           tooltip: Object.assign(tooltipBase((v) => v.toFixed(2), availability), {
-            filter: (item) => item.dataset.label !== "Reference",
+            filter: (item) => item.dataset.label !== "Reference" && tooltipItemFilter(item),
           }),
           yearBands: yearBandsOptions(),
         },
@@ -1235,6 +1321,7 @@
             border: { color: cssVar("--baseline") },
             ticks: { color: cssVar("--text-muted"), font: { size: 11 }, callback: (v) => v.toFixed(1) },
           },
+          yMilestone: milestoneAxis(),
         },
       },
     });
@@ -1262,7 +1349,10 @@
       type: "line",
       data: {
         labels,
-        datasets: [lineDataset("Backlog clearance time", backlog, cssVar("--series-backlog"))],
+        datasets: [
+          lineDataset("Backlog clearance time", backlog, cssVar("--series-backlog")),
+          ...milestoneDatasets(),
+        ],
       },
       options: {
         responsive: true,
@@ -1281,6 +1371,7 @@
             border: { color: cssVar("--baseline") },
             ticks: { color: cssVar("--text-muted"), font: { size: 11 }, callback: (v) => v.toFixed(0) },
           },
+          yMilestone: milestoneAxis(),
         },
       },
     });
