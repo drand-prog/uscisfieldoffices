@@ -198,6 +198,25 @@ h1 {
   margin-bottom: 20px;
 }
 
+.year-mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.year-mode-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.year-mode-row .lag-toggle {
+  margin-bottom: 0;
+}
+
 .filter-row label {
   font-size: 0.78rem;
   color: var(--text-muted);

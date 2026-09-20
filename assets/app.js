@@ -55,7 +55,7 @@
       flowChartNote:
         "Received, approved, and denied counts for the quarter, summed across all four admission categories (Family-based, Employment-based, Humanitarian-based, Other) unless a single category is selected above. These are flow counts — each point covers only that quarter's activity, not a running total.",
       rateChartNote:
-        "Share of decided cases (approved + denied) that quarter, computed from the Total category (all four admission categories combined) unless a single category is selected above. Unlike N-400, no I-485 category shows meaningful small-count suppression, so Total is used directly rather than excluding a category.",
+        "Share of decided cases (approved + denied) that quarter that ended in denial, computed from the Total category (all four admission categories combined) unless a single category is selected above. Unlike N-400, no I-485 category shows meaningful small-count suppression, so Total is used directly rather than excluding a category.",
       footerSource:
         "Source: U.S. Department of Homeland Security, USCIS quarterly Form I-485 performance reports by field office and service center, FY2015 Q1 through FY2026 Q3 (47 quarters). Some quarters are PDF-derived (FY2015 Q1, FY2019–2021) — see the data-quality note above the charts for those. “D” indicates a value suppressed by USCIS disclosure standards for small counts; suppressed cells are shown as gaps, not zero. An office is selectable here if it appears in any quarter, and its chart will show gaps for quarters before it opened or after it closed.",
       showFy2026Q3Note: false,
@@ -78,6 +78,7 @@
     formKey: "n400",
     categoryKey: "total", // "total" | one of formConfig().categories -- I-485 only
     denialChangeLag: 1, // 1 (prior quarter) or 4 (four quarters ago)
+    yearMode: "fy", // "fy" (fiscal year, default) or "cy" (calendar year) -- x-axis labels
     dataset: null,
     quarterKeys: [],
     officeIndex: [], // [{code, name, state}]
@@ -116,11 +117,12 @@
     return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   }
 
-  // ---------- Fiscal-year axis bands ----------
-  // Draws alternating background shading behind each fiscal year's quarters,
-  // plus a centered "FYxxxx" label in a reserved strip below the Q1-Q4 tick
+  // ---------- Year-axis bands ----------
+  // Draws alternating background shading behind each year's quarters, plus a
+  // centered "FYxxxx"/"CYxxxx" label in a reserved strip below the Q1-Q4 tick
   // labels. Registered once globally; each chart opts in by setting
-  // options.plugins.yearBands.fiscalYears.
+  // options.plugins.yearBands.years (state.yearMode picks fiscal vs.
+  // calendar year grouping -- see axisYearsArray()).
   // Draws a colored strip behind the Q1-Q4 tick-label row (between
   // chartArea.bottom and the reserved FY-label strip) indicating which
   // party held the presidency as of that quarter's period end. Grouped into
@@ -160,19 +162,19 @@
     id: "yearBands",
     beforeDraw(chart, _args, opts) {
       drawPartyStrip(chart, opts);
-      const fiscalYears = opts.fiscalYears;
-      if (!fiscalYears || !fiscalYears.length) return;
+      const years = opts.years;
+      if (!years || !years.length) return;
       const { ctx, chartArea, scales } = chart;
       const xScale = scales.x;
       if (!chartArea) return;
-      const n = fiscalYears.length;
+      const n = years.length;
       const step = n > 1 ? xScale.getPixelForValue(1) - xScale.getPixelForValue(0) : chartArea.width;
       ctx.save();
       let i = 0;
       let bandIndex = 0;
       while (i < n) {
         let j = i;
-        while (j + 1 < n && fiscalYears[j + 1] === fiscalYears[i]) j++;
+        while (j + 1 < n && years[j + 1] === years[i]) j++;
         if (bandIndex % 2 === 1) {
           const left = xScale.getPixelForValue(i) - step / 2;
           const right = xScale.getPixelForValue(j) + step / 2;
@@ -185,12 +187,12 @@
       ctx.restore();
     },
     afterDraw(chart, _args, opts) {
-      const fiscalYears = opts.fiscalYears;
-      if (!fiscalYears || !fiscalYears.length) return;
+      const years = opts.years;
+      if (!years || !years.length) return;
       const { ctx, chartArea, scales } = chart;
       const xScale = scales.x;
       if (!chartArea) return;
-      const n = fiscalYears.length;
+      const n = years.length;
       const labelBandHeight = opts.labelBandHeight || 16;
       ctx.save();
       ctx.fillStyle = opts.labelColor || "#898781";
@@ -203,9 +205,9 @@
       let i = 0;
       while (i < n) {
         let j = i;
-        while (j + 1 < n && fiscalYears[j + 1] === fiscalYears[i]) j++;
+        while (j + 1 < n && years[j + 1] === years[i]) j++;
         const cx = (xScale.getPixelForValue(i) + xScale.getPixelForValue(j)) / 2;
-        const text = `FY${fiscalYears[i]}`;
+        const text = `${opts.yearPrefix || "FY"}${years[i]}`;
         const halfWidth = ctx.measureText(text).width / 2;
         // Skip (don't draw) a label that would collide with the previous
         // one -- same overlap-avoidance idea as Chart.js's own tick
@@ -221,8 +223,21 @@
   };
   Chart.register(yearBandsPlugin);
 
-  function fiscalYearsArray() {
-    return state.quarterKeys.map((k) => state.dataset.quarters[k].fy);
+  // Calendar year/quarter for a quarter's periodEnd -- USCIS's fiscal
+  // quarters run Oct-Sep, so periodEnd's own month/year gives the calendar
+  // quarter directly (e.g. FY2015 Q1 ends 2014-12-31 -> CY2014 Q4).
+  function calendarYearOf(periodEnd) {
+    return Number(periodEnd.slice(0, 4));
+  }
+  function calendarQuarterOf(periodEnd) {
+    return Math.ceil(Number(periodEnd.slice(5, 7)) / 3);
+  }
+
+  function axisYearsArray() {
+    return state.quarterKeys.map((k) => {
+      const q = state.dataset.quarters[k];
+      return state.yearMode === "cy" ? calendarYearOf(q.periodEnd) : q.fy;
+    });
   }
 
   // Presidential party in office as of each quarter's period end. Using
@@ -251,7 +266,8 @@
 
   function yearBandsOptions() {
     return {
-      fiscalYears: fiscalYearsArray(),
+      years: axisYearsArray(),
+      yearPrefix: state.yearMode === "cy" ? "CY" : "FY",
       bandColor: cssVar("--year-band"),
       labelColor: cssVar("--text-muted"),
       parties: partiesArray(),
@@ -393,6 +409,11 @@
     } else {
       url.searchParams.set("denialChangeLag", state.denialChangeLag);
     }
+    if (state.yearMode === "fy") {
+      url.searchParams.delete("yearMode");
+    } else {
+      url.searchParams.set("yearMode", state.yearMode);
+    }
     history.replaceState(null, "", url);
   }
 
@@ -410,14 +431,26 @@
     return q.offices[state.selectedCode] || null;
   }
 
+  // Quarter label for chart tooltips and table rows -- kept in sync with
+  // state.yearMode so it always matches what the x-axis itself is showing
+  // (a tooltip reading "FY2015 Q1" while the axis reads "CY2014 Q4" would
+  // look like a bug, not a deliberate choice).
+  function axisLabelFor(q) {
+    if (state.yearMode === "cy") {
+      return `CY${calendarYearOf(q.periodEnd)} Q${calendarQuarterOf(q.periodEnd)}`;
+    }
+    return q.label;
+  }
+
   function quarterLabels() {
-    return state.quarterKeys.map((k) => state.dataset.quarters[k].label);
+    return state.quarterKeys.map((k) => axisLabelFor(state.dataset.quarters[k]));
   }
 
   function quarterLabelsForTable() {
     return state.quarterKeys.map((k) => {
       const q = state.dataset.quarters[k];
-      return q.needsVerification ? `${q.label} (PDF)` : q.label;
+      const label = axisLabelFor(q);
+      return q.needsVerification ? `${label} (PDF)` : label;
     });
   }
 
@@ -453,7 +486,6 @@
     const approved = seriesFor("approved", bucket);
     const denied = seriesFor("denied", bucket);
     const availability = officeAvailability();
-    const approvalRate = [];
     const denialRate = [];
     for (let i = 0; i < approved.length; i++) {
       const a = approved[i];
@@ -462,15 +494,12 @@
         // undefined = office not in this quarter's report; null = reported
         // but this specific rate can't be computed (a suppressed value, or
         // zero decided cases).
-        const gap = availability[i] ? null : undefined;
-        approvalRate.push(gap);
-        denialRate.push(gap);
+        denialRate.push(availability[i] ? null : undefined);
       } else {
-        approvalRate.push((a / (a + d)) * 100);
         denialRate.push((d / (a + d)) * 100);
       }
     }
-    return { approvalRate, denialRate };
+    return { denialRate };
   }
 
   // Percentage-point change in denial rate vs. `lag` quarters earlier
@@ -915,7 +944,8 @@
       callback: (_value, index) => {
         const k = state.quarterKeys[index];
         const q = k ? state.dataset.quarters[k] : null;
-        return q ? `Q${q.quarter}` : "";
+        if (!q) return "";
+        return `Q${state.yearMode === "cy" ? calendarQuarterOf(q.periodEnd) : q.quarter}`;
       },
     };
   }
@@ -1033,13 +1063,8 @@
   // ---------- Rate chart ----------
   function renderRateChart() {
     const labels = quarterLabels();
-    const { approvalRate, denialRate } = rateSeries();
+    const { denialRate } = rateSeries();
     const availability = officeAvailability();
-
-    renderLegend("rate-legend", [
-      { label: "Approval rate", color: cssVar("--series-approval-rate"), shape: "line" },
-      { label: "Denial rate", color: cssVar("--series-denial-rate"), shape: "line" },
-    ]);
 
     destroyChart("rate");
     const ctx = document.getElementById("rate-chart").getContext("2d");
@@ -1047,10 +1072,7 @@
       type: "line",
       data: {
         labels,
-        datasets: [
-          lineDataset("Approval rate", approvalRate, cssVar("--series-approval-rate")),
-          lineDataset("Denial rate", denialRate, cssVar("--series-denial-rate")),
-        ],
+        datasets: [lineDataset("Denial rate", denialRate, cssVar("--series-denial-rate"))],
       },
       options: {
         responsive: true,
@@ -1065,7 +1087,6 @@
           x: quarterXScale(),
           y: {
             beginAtZero: true,
-            max: 100,
             grid: { color: cssVar("--gridline") },
             border: { color: cssVar("--baseline") },
             ticks: {
@@ -1082,12 +1103,11 @@
     renderTable("rate-table-wrap", {
       caption:
         state.categoryKey === "total"
-          ? `Approval / denial rate, ${formConfig().rateBucketLabel}`
-          : `Approval / denial rate, ${categoryLabel(state.categoryKey)} category`,
-      columns: ["Quarter", "Approval rate", "Denial rate"],
+          ? `Denial rate, ${formConfig().rateBucketLabel}`
+          : `Denial rate, ${categoryLabel(state.categoryKey)} category`,
+      columns: ["Quarter", "Denial rate"],
       rows: state.quarterKeys.map((k, i) => [
         rateTableLabels[i],
-        approvalRate[i] == null ? approvalRate[i] : `${approvalRate[i].toFixed(1)}%`,
         denialRate[i] == null ? denialRate[i] : `${denialRate[i].toFixed(1)}%`,
       ]),
     });
@@ -1440,6 +1460,24 @@
     });
   }
 
+  function initYearModeToggle() {
+    const el = document.getElementById("year-mode-toggle");
+    for (const btn of el.querySelectorAll("button")) {
+      btn.setAttribute("aria-selected", String(btn.dataset.yearMode === state.yearMode));
+    }
+    el.addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-year-mode]");
+      const mode = btn && btn.dataset.yearMode;
+      if (!mode || mode === state.yearMode) return;
+      state.yearMode = mode;
+      for (const b of el.querySelectorAll("button")) {
+        b.setAttribute("aria-selected", String(b.dataset.yearMode === state.yearMode));
+      }
+      syncUrl();
+      renderAll(); // every chart's x-axis and table depend on this
+    });
+  }
+
   // ---------- Render orchestration ----------
   function renderAll() {
     document.getElementById("office-meta").textContent = currentOfficeMeta();
@@ -1473,11 +1511,16 @@
     if (lagFromUrl === 1 || lagFromUrl === 4) {
       state.denialChangeLag = lagFromUrl;
     }
+    const yearModeFromUrl = params.get("yearMode");
+    if (yearModeFromUrl === "fy" || yearModeFromUrl === "cy") {
+      state.yearMode = yearModeFromUrl;
+    }
 
     applyFormText();
     initFormToggle();
     initCategoryToggle();
     initDenialChangeToggle();
+    initYearModeToggle();
     await loadData();
     populateOfficeOptions();
     initOfficeSelectListeners();

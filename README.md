@@ -149,14 +149,17 @@ one quarter (see Data-quality notes).
 - **Pending is a stock, not a flow.** It's a snapshot as of quarter-end, not
   summable across quarters. Received/Approved/Denied are flow counts for that
   quarter only.
-- **Approval/denial rates:** N-400's rate chart uses the non-military
-  Naturalization category rather than Total, because Military Naturalization
-  has enough small-count suppression (~15% of its office-level cells) to make
-  a rate computed from it unreliable at the office level. I-485's rate chart
-  uses Total directly (or, when a single category is selected via the
-  category toggle, that category), since no individual I-485 category shows
+- **Denial rate:** N-400's rate chart uses the non-military Naturalization
+  category rather than Total, because Military Naturalization has enough
+  small-count suppression (~15% of its office-level cells) to make a rate
+  computed from it unreliable at the office level. I-485's rate chart uses
+  Total directly (or, when a single category is selected via the category
+  toggle, that category), since no individual I-485 category shows
   suppression anywhere near that concentrated. This is configured per form via
-  `rateBucket` in `FORMS` (`assets/app.js`).
+  `rateBucket` in `FORMS` (`assets/app.js`). The chart itself only plots the
+  denial rate; `rateSeries()` no longer computes an approval-rate series
+  since nothing reads it (denial rate always equals 100% minus approval
+  rate for decided cases, so nothing was lost by dropping it).
 - **I-485 category toggle:** Family-based, Employment-based, Humanitarian-
   based, and Other are reported as separate category blocks (see "Why the
   parser looks the way it does" above); the dashboard defaults to Total (all
@@ -175,6 +178,17 @@ one quarter (see Data-quality notes).
   after the January 20 inauguration, so it's automatically attributed to the
   incoming president, while Q1 (ending December 31) stays with the outgoing
   one. The table needs a manual entry after each future inauguration.
+- **FY/CY x-axis toggle:** a global control (`#year-mode-toggle`, above the
+  charts) switches every chart's x-axis, tooltips, and "View as table" rows
+  between fiscal-year grouping (USCIS's own Oct-Sep quarters, the default)
+  and calendar-year grouping. Calendar year/quarter is derived from each
+  quarter's `periodEnd` date (`calendarYearOf`/`calendarQuarterOf` in
+  `assets/app.js`) rather than stored separately, so a fiscal quarter's
+  calendar-year label follows directly from when it actually ends — e.g.
+  FY2015 Q1 (Oct-Dec 2014) reads as CY2014 Q4. The choice is synced to the
+  URL (`?yearMode=cy`) like the other view state. The administration
+  shading is unaffected by this toggle since it's keyed off `periodEnd`
+  directly, not the fiscal/calendar quarter label.
 
 ## Local preview
 
