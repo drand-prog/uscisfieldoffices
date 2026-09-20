@@ -92,6 +92,24 @@
   </section>
 
   <section class="chart-card">
+    <h2>Denial rate change</h2>
+    <p class="chart-note">
+      Percentage-point change in the denial rate versus a prior period (same category as the chart above).
+      Positive (red) means the denial rate rose since that period; negative (blue) means it fell.
+    </p>
+    <div class="form-toggle lag-toggle" id="denial-change-toggle" role="tablist" aria-label="Comparison period">
+      <button type="button" role="tab" data-lag="1" aria-selected="true">vs. prior quarter</button>
+      <button type="button" role="tab" data-lag="4">vs. 4 quarters ago</button>
+    </div>
+    <div class="legend-row" id="denial-change-legend"></div>
+    <div class="chart-wrap"><canvas id="denial-change-chart"></canvas></div>
+    <div class="chart-footer">
+      <button class="table-toggle" data-target="denial-change-table-wrap" type="button">View as table</button>
+    </div>
+    <div class="data-table-wrap" id="denial-change-table-wrap" hidden></div>
+  </section>
+
+  <section class="chart-card">
     <h2>Efficiency: completions ÷ received</h2>
     <p class="chart-note">
       Completions (approved + denied, Total) divided by applications received (Total) that quarter. Values

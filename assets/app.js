@@ -3,6 +3,12 @@
 
   const fmtInt = new Intl.NumberFormat("en-US");
   const fmtPct = (v) => (v === null || v === undefined ? "—" : `${v.toFixed(1)}%`);
+  // Signed percentage-point formatter that rounds before checking the sign,
+  // so a value like -0.04 (which rounds to "0.0") doesn't display as "-0.0".
+  const fmtPp = (v) => {
+    const r = Math.round(v * 10) / 10;
+    return `${r > 0 ? "+" : ""}${r === 0 ? "0.0" : r.toFixed(1)} pp`;
+  };
 
   // Both forms share this report family's shape (a TOTAL row, offices grouped
   // by state, several category blocks each with received/approved/denied/
@@ -71,6 +77,7 @@
   const state = {
     formKey: "n400",
     categoryKey: "total", // "total" | one of formConfig().categories -- I-485 only
+    denialChangeLag: 1, // 1 (prior quarter) or 4 (four quarters ago)
     dataset: null,
     quarterKeys: [],
     officeIndex: [], // [{code, name, state}]
@@ -319,6 +326,11 @@
     } else {
       url.searchParams.set("category", state.categoryKey);
     }
+    if (state.denialChangeLag === 1) {
+      url.searchParams.delete("denialChangeLag");
+    } else {
+      url.searchParams.set("denialChangeLag", state.denialChangeLag);
+    }
     history.replaceState(null, "", url);
   }
 
@@ -397,6 +409,26 @@
       }
     }
     return { approvalRate, denialRate };
+  }
+
+  // Percentage-point change in denial rate vs. `lag` quarters earlier
+  // (same rateSeries() denial rate every other chart uses, so this always
+  // matches the active form/category). undefined = one side of the
+  // comparison has no office record at all (including simply not enough
+  // history yet, e.g. lag=4 in the dataset's first year); null = both
+  // quarters have a record but the rate itself couldn't be computed
+  // (suppressed, or zero decided cases).
+  function denialRateChangeSeries(lag) {
+    const { denialRate } = rateSeries();
+    const availability = officeAvailability();
+    return state.quarterKeys.map((_k, i) => {
+      const j = i - lag;
+      if (j < 0 || !availability[i] || !availability[j]) return undefined;
+      const cur = denialRate[i];
+      const prior = denialRate[j];
+      if (cur == null || prior == null) return null;
+      return cur - prior;
+    });
   }
 
   // Completions (approved + denied) ÷ received, active bucket. Below 1 means
@@ -999,6 +1031,85 @@
     });
   }
 
+  // ---------- Denial rate change chart ----------
+  function renderDenialChangeChart() {
+    const labels = quarterLabels();
+    const lag = state.denialChangeLag;
+    const change = denialRateChangeSeries(lag);
+    const officeAvail = officeAvailability();
+    const changeAvailability = state.quarterKeys.map((_k, i) => {
+      const j = i - lag;
+      return j >= 0 && officeAvail[i] && officeAvail[j];
+    });
+
+    for (const btn of document.querySelectorAll("#denial-change-toggle button")) {
+      btn.setAttribute("aria-selected", String(Number(btn.dataset.lag) === lag));
+    }
+
+    renderLegend("denial-change-legend", [
+      { label: "Denial rate increased", color: cssVar("--series-denial-rate") },
+      { label: "Denial rate decreased", color: cssVar("--series-approval-rate") },
+    ]);
+
+    const upColor = cssVar("--series-denial-rate");
+    const downColor = cssVar("--series-approval-rate");
+    const flatColor = cssVar("--text-muted");
+    const barColors = change.map((v) => (v == null ? flatColor : v > 0 ? upColor : v < 0 ? downColor : flatColor));
+
+    destroyChart("denialChange");
+    const ctx = document.getElementById("denial-change-chart").getContext("2d");
+    state.charts.denialChange = new Chart(ctx, {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [
+          {
+            label: "Denial rate change",
+            data: change,
+            backgroundColor: barColors,
+            borderRadius: 4,
+            maxBarThickness: 20,
+            categoryPercentage: 0.7,
+            barPercentage: 0.9,
+          },
+        ],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: "index", intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: tooltipBase(fmtPp, changeAvailability),
+          yearBands: yearBandsOptions(),
+        },
+        scales: {
+          x: quarterXScale(),
+          y: {
+            grid: { color: cssVar("--gridline") },
+            border: { color: cssVar("--baseline") },
+            ticks: {
+              color: cssVar("--text-muted"),
+              font: { size: 11 },
+              callback: (v) => `${v > 0 ? "+" : ""}${v.toFixed(0)}pp`,
+            },
+          },
+        },
+      },
+    });
+
+    const lagLabel = lag === 1 ? "prior quarter" : `${lag} quarters ago`;
+    const changeTableLabels = quarterLabelsForTable();
+    renderTable("denial-change-table-wrap", {
+      caption: `Denial rate change vs. ${lagLabel}`,
+      columns: ["Quarter", "Change (pp)"],
+      rows: state.quarterKeys.map((k, i) => [
+        changeTableLabels[i],
+        change[i] == null ? change[i] : fmtPp(change[i]),
+      ]),
+    });
+  }
+
   // ---------- Efficiency chart ----------
   function renderEfficiencyChart() {
     const labels = quarterLabels();
@@ -1256,6 +1367,17 @@
     });
   }
 
+  function initDenialChangeToggle() {
+    document.getElementById("denial-change-toggle").addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-lag]");
+      const lag = btn && Number(btn.dataset.lag);
+      if (!lag || lag === state.denialChangeLag) return;
+      state.denialChangeLag = lag;
+      syncUrl();
+      renderDenialChangeChart(); // only this chart depends on the lag choice
+    });
+  }
+
   // ---------- Render orchestration ----------
   function renderAll() {
     document.getElementById("office-meta").textContent = currentOfficeMeta();
@@ -1264,6 +1386,7 @@
     renderFlowChart();
     renderPendingChart();
     renderRateChart();
+    renderDenialChangeChart();
     renderEfficiencyChart();
     renderBacklogChart();
   }
@@ -1284,10 +1407,15 @@
     if (categoryFromUrl && formConfig().categories && formConfig().categories.includes(categoryFromUrl)) {
       state.categoryKey = categoryFromUrl;
     }
+    const lagFromUrl = Number(params.get("denialChangeLag"));
+    if (lagFromUrl === 1 || lagFromUrl === 4) {
+      state.denialChangeLag = lagFromUrl;
+    }
 
     applyFormText();
     initFormToggle();
     initCategoryToggle();
+    initDenialChangeToggle();
     await loadData();
     populateOfficeOptions();
     initOfficeSelectListeners();
