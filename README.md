@@ -165,6 +165,16 @@ one quarter (see Data-quality notes).
   the Total charts. N-400 doesn't have sub-categories in this sense (Military
   Naturalization is a data-quality carve-out, not a category worth viewing on
   its own), so the toggle is I-485-only.
+- **Administration shading on the x-axis:** every chart's Q1-Q4 tick labels
+  are tinted blue (Democratic) or red (Republican) for whichever party held
+  the presidency as of that quarter's `periodEnd`. This is computed from a
+  small hard-coded table of inauguration dates in `assets/app.js`
+  (`ADMINISTRATIONS`), not derived from the data. Using `periodEnd` rather
+  than the fiscal quarter number handles the post-election transition for
+  free: Q2 of the fiscal year following an election always ends March 31,
+  after the January 20 inauguration, so it's automatically attributed to the
+  incoming president, while Q1 (ending December 31) stays with the outgoing
+  one. The table needs a manual entry after each future inauguration.
 
 ## Local preview
 
