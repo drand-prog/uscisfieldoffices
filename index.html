@@ -43,6 +43,14 @@
     <div class="office-meta" id="office-meta"></div>
   </section>
 
+  <div class="year-mode-row">
+    <span class="year-mode-label">X-axis year labels</span>
+    <div class="form-toggle lag-toggle" id="year-mode-toggle" role="tablist" aria-label="X-axis year labels">
+      <button type="button" role="tab" data-year-mode="fy" aria-selected="true">Fiscal year (FY)</button>
+      <button type="button" role="tab" data-year-mode="cy" aria-selected="false">Calendar year (CY)</button>
+    </div>
+  </div>
+
   <p class="chart-note" id="pdf-quality-note" hidden></p>
 
   <section class="stat-row" id="stat-row" aria-label="Latest quarter snapshot"></section>
@@ -76,14 +84,13 @@
   </section>
 
   <section class="chart-card">
-    <h2>Approval rate vs. denial rate</h2>
+    <h2>Denial rate</h2>
     <p class="chart-note" id="rate-chart-note">
-      Share of decided cases (approved + denied) that quarter, computed from the non-military Naturalization
-      category only. Military naturalization is excluded here because ~15% of its office-level cells are
-      suppressed by USCIS for small counts, which would make a rate computed from it unreliable at the
-      office level.
+      Share of decided cases (approved + denied) that quarter that ended in denial, computed from the
+      non-military Naturalization category only. Military naturalization is excluded here because ~15% of
+      its office-level cells are suppressed by USCIS for small counts, which would make a rate computed
+      from it unreliable at the office level.
     </p>
-    <div class="legend-row" id="rate-legend"></div>
     <div class="chart-wrap"><canvas id="rate-chart"></canvas></div>
     <div class="chart-footer">
       <button class="table-toggle" data-target="rate-table-wrap" type="button">View as table</button>
