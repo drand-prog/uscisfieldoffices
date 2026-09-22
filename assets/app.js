@@ -297,10 +297,7 @@
 
   // Where a date falls within its quarter, as a 0-1 fraction of the way from
   // periodStart to periodEnd (day granularity -- these are USCIS reporting
-  // quarters, not intraday data). 0 lines up with the quarter's own x
-  // position; 1 lines up with the next quarter's, so this fraction is
-  // added directly to the quarter's integer index to get an exact
-  // day-proportional x position on the category axis.
+  // quarters, not intraday data).
   function dayFractionInQuarter(dateStr, periodStart, periodEnd) {
     const d = Date.parse(dateStr);
     const s = Date.parse(periodStart);
@@ -309,18 +306,31 @@
     return (d - s) / (e - s);
   }
 
-  // Precise fractional-index position (quarterIndex + day-fraction) and
-  // tooltip text for every milestone that falls within the loaded quarters
-  // (dates outside the dataset's range are skipped rather than clamped to an
-  // edge quarter they didn't actually occur in).
+  // Precise fractional-index position (for pixelForIndex() in
+  // milestoneMarkersPlugin below) and tooltip text for every milestone that
+  // falls within the loaded quarters (dates outside the dataset's range are
+  // skipped rather than clamped to an edge quarter they didn't actually
+  // occur in).
+  //
+  // Each quarter's own tick sits at its integer index; a date's fraction
+  // (0-1 through the quarter) is remapped to (frac - 0.5), so a date is
+  // placed within *half a quarter-width* of its own tick -- the middle of
+  // the quarter lands exactly on the tick, and periodStart/periodEnd land at
+  // the boundary with the neighboring quarter, never past it. Interpolating
+  // across the *full* gap to the next quarter's tick (frac added directly to
+  // the index) was tried first, but put a late-quarter date's dot right on
+  // top of the next quarter's tick -- visually indistinguishable from
+  // belonging to that next quarter instead of the one it's actually in.
   function milestoneMarkers() {
+    const n = state.quarterKeys.length;
     const markers = [];
     for (const m of POLICY_MILESTONES) {
       const idx = quarterIndexForDate(m.date);
       if (idx === -1) continue;
       const q = state.dataset.quarters[state.quarterKeys[idx]];
       const frac = dayFractionInQuarter(m.date, q.periodStart, q.periodEnd);
-      markers.push({ index: idx + frac, text: m.text });
+      const rawIndex = idx + (frac - 0.5);
+      markers.push({ index: Math.max(0, Math.min(n - 1, rawIndex)), text: m.text });
     }
     return markers;
   }

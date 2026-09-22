@@ -194,10 +194,18 @@ one quarter (see Data-quality notes).
   the x-axis, positioned by exact date rather than snapped to the middle of
   whichever quarter it falls in. `milestoneMarkers()` finds the quarter via
   `quarterIndexForDate()` (matching against `periodStart`/`periodEnd`) and
-  computes a 0-1 day-fraction within it (`dayFractionInQuarter()`), giving a
-  fractional index like `24.67` (quarter 24, two-thirds of the way through).
-  Chart.js can't position a dataset point at a fractional category index, so
-  the visible dot is drawn directly by a small canvas plugin
+  computes a 0-1 day-fraction within it (`dayFractionInQuarter()`), then
+  remaps that to `frac - 0.5` before adding it to the quarter's integer
+  index -- so a date is placed within *half a quarter-width* of its own
+  quarter's tick (dead center for a mid-quarter date, at the boundary with
+  the neighboring quarter for a date right at periodStart/periodEnd), rather
+  than interpolated across the *full* gap to the next quarter's tick. The
+  full-gap version was tried first and put a late-quarter date's dot
+  visually on top of the next quarter's tick -- indistinguishable from
+  belonging to that next quarter, most noticeably where a quarter transition
+  also happens to cross a year boundary in CY mode. Chart.js can't position
+  a dataset point at a fractional category index, so the visible dot is
+  drawn directly by a small canvas plugin
   (`milestoneMarkersPlugin`) that linearly interpolates between the two
   nearest integer pixel positions, the same technique `yearBandsPlugin`/
   `drawPartyStrip` already use above. A second, invisible (`pointRadius: 0`)
