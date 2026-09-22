@@ -38,6 +38,11 @@
       footerSource:
         "Source: U.S. Department of Homeland Security, USCIS quarterly Form N-400 performance reports by field office, FY2015 Q1 through FY2026 Q3 (47 quarters). USCIS has changed this report's format several times over that span — spreadsheets (FY2015–2018, FY2022–2026) and PDFs (FY2019–2021) — see the data-quality note above the charts for PDF-derived quarters. “D” indicates a value suppressed by USCIS disclosure standards for small counts; suppressed cells are shown as gaps, not zero. The set of field offices has also changed over time as offices opened, closed, or were renamed; an office is selectable here if it appears in any quarter, and its chart will show gaps for quarters before it opened or after it closed.",
       showFy2026Q3Note: true,
+      milestoneNote:
+        "Every chart also marks six USCIS policy milestones with a small dot on the x-axis, positioned by " +
+        "its exact date: the 2016, 2020, and 2024 Final Fee Rule effective dates; the 2020 and 2025 " +
+        "naturalization civics test implementation dates; and the March 2020 closure of USCIS field offices " +
+        "to the public due to COVID-19. Hover a marked quarter for details.",
     },
     i485: {
       key: "i485",
@@ -59,6 +64,11 @@
       footerSource:
         "Source: U.S. Department of Homeland Security, USCIS quarterly Form I-485 performance reports by field office and service center, FY2015 Q1 through FY2026 Q3 (47 quarters). Some quarters are PDF-derived (FY2015 Q1, FY2019–2021) — see the data-quality note above the charts for those. “D” indicates a value suppressed by USCIS disclosure standards for small counts; suppressed cells are shown as gaps, not zero. An office is selectable here if it appears in any quarter, and its chart will show gaps for quarters before it opened or after it closed.",
       showFy2026Q3Note: false,
+      milestoneNote:
+        "Every chart also marks four USCIS policy milestones with a small dot on the x-axis, positioned by " +
+        "its exact date: the 2016, 2020, and 2024 Final Fee Rule effective dates, and the March 2020 " +
+        "closure of USCIS field offices to the public due to COVID-19. Hover a marked quarter for details. " +
+        "(The naturalization civics test milestones shown on the N-400 view don't apply to I-485.)",
       // Category blocks this form's report breaks applications into, besides
       // Total -- lets the dashboard offer a per-category view. N-400 has no
       // entry here (Military Naturalization is a data-quality carve-out, not
@@ -280,14 +290,21 @@
   // chart's x-axis, positioned by exact date (interpolated between the
   // quarter's periodStart/periodEnd) rather than snapped to the middle of
   // whichever quarter it falls in.
+  // `forms` restricts a milestone to specific FORMS keys; omitted means it
+  // applies to every form. The civics test is part of the naturalization
+  // (N-400) interview process specifically -- not relevant to I-485.
   const POLICY_MILESTONES = [
     { date: "2016-12-23", text: "2016 Final Fee Rule effective date: December 23, 2016" },
     { date: "2020-03-18", text: "USCIS field offices closed to the public due to COVID-19: March 18, 2020" },
     { date: "2020-10-02", text: "2020 Final Fee Rule effective date: October 2, 2020" },
     { date: "2024-04-01", text: "2024 Final Fee Rule effective date: April 1, 2024" },
-    { date: "2020-12-01", text: "2020 civics test implementation: December 1, 2020" },
-    { date: "2025-10-20", text: "2025 civics test implementation: October 20, 2025" },
+    { date: "2020-12-01", text: "2020 civics test implementation: December 1, 2020", forms: ["n400"] },
+    { date: "2025-10-20", text: "2025 civics test implementation: October 20, 2025", forms: ["n400"] },
   ];
+
+  function milestonesForActiveForm() {
+    return POLICY_MILESTONES.filter((m) => !m.forms || m.forms.includes(state.formKey));
+  }
 
   function quarterIndexForDate(dateStr) {
     return state.quarterKeys.findIndex((k) => {
@@ -325,7 +342,7 @@
   function milestoneMarkers() {
     const n = state.quarterKeys.length;
     const markers = [];
-    for (const m of POLICY_MILESTONES) {
+    for (const m of milestonesForActiveForm()) {
       const idx = quarterIndexForDate(m.date);
       if (idx === -1) continue;
       const q = state.dataset.quarters[state.quarterKeys[idx]];
@@ -346,7 +363,7 @@
     const n = state.quarterKeys.length;
     const color = cssVar("--milestone-marker");
     const datasets = [];
-    for (const m of POLICY_MILESTONES) {
+    for (const m of milestonesForActiveForm()) {
       const idx = quarterIndexForDate(m.date);
       if (idx === -1) continue;
       const data = new Array(n).fill(null);
@@ -1582,6 +1599,7 @@
     document.getElementById("rate-chart-note").textContent = cfg.rateChartNote;
     document.getElementById("footer-source").textContent = cfg.footerSource;
     document.getElementById("footer-fy2026q3-note").hidden = !cfg.showFy2026Q3Note;
+    document.getElementById("footer-milestone-note").textContent = cfg.milestoneNote;
 
     for (const btn of document.querySelectorAll("#form-toggle button")) {
       btn.setAttribute("aria-selected", String(btn.dataset.form === state.formKey));
