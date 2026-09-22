@@ -190,18 +190,25 @@ one quarter (see Data-quality notes).
   shading is unaffected by this toggle since it's keyed off `periodEnd`
   directly, not the fiscal/calendar quarter label.
 - **Policy milestone markers:** every chart marks five dated USCIS policy
-  changes (`POLICY_MILESTONES` in `assets/app.js`) with a small dot in
-  whichever quarter each date falls, found via `quarterIndexForDate()`
-  matching the date against each quarter's `periodStart`/`periodEnd`. Each
-  milestone is its own Chart.js point dataset on a dedicated, hidden 0-1
-  axis (`yMilestone`) so the dot always sits near the top of the plot and
-  never affects the chart's real y-scale; when two milestones land in the
-  same quarter (the 2020 fee rule and the 2020 civics test both fall in
-  FY2021 Q1) they're stacked at different heights so both dots are visible
-  and both show up as separate tooltip lines. The explanation shown on
-  hover comes from `tooltipBase()`'s label callback special-casing any
-  dataset flagged `isMilestone`; a new date only needs an entry added to
-  `POLICY_MILESTONES`, nothing else.
+  changes (`POLICY_MILESTONES` in `assets/app.js`) with a small dot right on
+  the x-axis, positioned by exact date rather than snapped to the middle of
+  whichever quarter it falls in. `milestoneMarkers()` finds the quarter via
+  `quarterIndexForDate()` (matching against `periodStart`/`periodEnd`) and
+  computes a 0-1 day-fraction within it (`dayFractionInQuarter()`), giving a
+  fractional index like `24.67` (quarter 24, two-thirds of the way through).
+  Chart.js can't position a dataset point at a fractional category index, so
+  the visible dot is drawn directly by a small canvas plugin
+  (`milestoneMarkersPlugin`) that linearly interpolates between the two
+  nearest integer pixel positions, the same technique `yearBandsPlugin`/
+  `drawPartyStrip` already use above. A second, invisible (`pointRadius: 0`)
+  Chart.js dataset per milestone still exists purely so that quarter's
+  column participates in the normal index-mode tooltip; `tooltipBase()`'s
+  label callback special-cases any dataset flagged `isMilestone` to show its
+  explanation text instead of a formatted value. Because the visible dot now
+  uses the exact date, two milestones landing in the same quarter (the 2020
+  fee rule and the 2020 civics test, both FY2021 Q1) land at naturally
+  different x positions rather than needing to be stacked. A new milestone
+  only needs an entry added to `POLICY_MILESTONES`, nothing else.
 
 ## Local preview
 
