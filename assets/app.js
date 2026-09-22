@@ -282,6 +282,7 @@
   // whichever quarter it falls in.
   const POLICY_MILESTONES = [
     { date: "2016-12-23", text: "2016 Final Fee Rule effective date: December 23, 2016" },
+    { date: "2020-03-18", text: "USCIS field offices closed to the public due to COVID-19: March 18, 2020" },
     { date: "2020-10-02", text: "2020 Final Fee Rule effective date: October 2, 2020" },
     { date: "2024-04-01", text: "2024 Final Fee Rule effective date: April 1, 2024" },
     { date: "2020-12-01", text: "2020 civics test implementation: December 1, 2020" },
