@@ -277,10 +277,9 @@
 
   // ---------- Policy milestone markers ----------
   // A handful of dated USCIS policy changes, shown as a small dot on every
-  // chart in whichever quarter each date falls in. Drawn as ordinary Chart.js
-  // point datasets on a dedicated, hidden 0-1 axis (yMilestone) so they never
-  // affect each chart's real y-scale -- the dot always sits near the top of
-  // the plot regardless of what the data itself is doing that quarter.
+  // chart's x-axis, positioned by exact date (interpolated between the
+  // quarter's periodStart/periodEnd) rather than snapped to the middle of
+  // whichever quarter it falls in.
   const POLICY_MILESTONES = [
     { date: "2016-12-23", text: "2016 Final Fee Rule effective date: December 23, 2016" },
     { date: "2020-10-02", text: "2020 Final Fee Rule effective date: October 2, 2020" },
@@ -296,26 +295,51 @@
     });
   }
 
-  // One Chart.js point dataset per milestone that falls within the loaded
-  // quarters (dates outside the dataset's range are skipped rather than
-  // clamped to an edge quarter they didn't actually occur in). When two
-  // milestones land in the same quarter (the 2020 fee rule and the 2020
-  // civics test both fall in FY2021 Q1), each gets its own dataset so
-  // Chart.js's index-mode tooltip lists both as separate lines instead of
-  // one overwriting the other, and they're stacked vertically so both dots
-  // are visible instead of drawing on top of each other.
+  // Where a date falls within its quarter, as a 0-1 fraction of the way from
+  // periodStart to periodEnd (day granularity -- these are USCIS reporting
+  // quarters, not intraday data). 0 lines up with the quarter's own x
+  // position; 1 lines up with the next quarter's, so this fraction is
+  // added directly to the quarter's integer index to get an exact
+  // day-proportional x position on the category axis.
+  function dayFractionInQuarter(dateStr, periodStart, periodEnd) {
+    const d = Date.parse(dateStr);
+    const s = Date.parse(periodStart);
+    const e = Date.parse(periodEnd);
+    if (e <= s) return 0;
+    return (d - s) / (e - s);
+  }
+
+  // Precise fractional-index position (quarterIndex + day-fraction) and
+  // tooltip text for every milestone that falls within the loaded quarters
+  // (dates outside the dataset's range are skipped rather than clamped to an
+  // edge quarter they didn't actually occur in).
+  function milestoneMarkers() {
+    const markers = [];
+    for (const m of POLICY_MILESTONES) {
+      const idx = quarterIndexForDate(m.date);
+      if (idx === -1) continue;
+      const q = state.dataset.quarters[state.quarterKeys[idx]];
+      const frac = dayFractionInQuarter(m.date, q.periodStart, q.periodEnd);
+      markers.push({ index: idx + frac, text: m.text });
+    }
+    return markers;
+  }
+
+  // One (invisible) Chart.js point dataset per milestone, at the quarter it
+  // falls in -- this is purely what makes that quarter's column trigger the
+  // milestone's line in the existing index-mode tooltip (see tooltipBase()).
+  // The dot itself is drawn separately, at its exact date, by
+  // milestoneMarkersPlugin below; pointRadius:0 keeps Chart.js from also
+  // drawing one of its own (snapped to the quarter's integer index).
   function milestoneDatasets() {
     const n = state.quarterKeys.length;
-    const stackCountByIndex = new Map();
     const color = cssVar("--milestone-marker");
     const datasets = [];
     for (const m of POLICY_MILESTONES) {
       const idx = quarterIndexForDate(m.date);
       if (idx === -1) continue;
-      const stack = stackCountByIndex.get(idx) || 0;
-      stackCountByIndex.set(idx, stack + 1);
       const data = new Array(n).fill(null);
-      data[idx] = 0.92 - stack * 0.16;
+      data[idx] = 0.5;
       datasets.push({
         type: "line",
         label: "Policy milestone",
@@ -323,12 +347,14 @@
         showLine: false,
         spanGaps: false,
         yAxisID: "yMilestone",
-        pointStyle: "circle",
-        pointRadius: 5,
-        pointHoverRadius: 7,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        pointHitRadius: 0,
+        // Not drawn on the chart itself (milestoneMarkersPlugin draws the
+        // real dot at its precise date), but the tooltip's own color swatch
+        // still reads these, so they need to match.
         pointBackgroundColor: color,
-        pointBorderColor: cssVar("--surface-1"),
-        pointBorderWidth: 1.5,
+        pointBorderColor: color,
         isMilestone: true,
         milestoneText: m.text,
       });
@@ -339,6 +365,55 @@
   function milestoneAxis() {
     return { display: false, min: 0, max: 1 };
   }
+
+  function milestoneMarkersOptions() {
+    return {
+      markers: milestoneMarkers(),
+      color: cssVar("--milestone-marker"),
+      borderColor: cssVar("--surface-1"),
+      radius: 5,
+    };
+  }
+
+  // Draws the actual milestone dots, right on the x-axis line, at their
+  // exact day-proportional pixel position (see milestoneMarkers()) rather
+  // than at a category's integer pixel. Chart.js datasets can't be
+  // positioned at a fractional category index, so this draws them directly
+  // instead, interpolating between two known-good integer pixel positions
+  // the same way yearBandsPlugin/drawPartyStrip already do above.
+  const milestoneMarkersPlugin = {
+    id: "milestoneMarkers",
+    afterDraw(chart, _args, opts) {
+      const markers = opts.markers;
+      if (!markers || !markers.length) return;
+      const { ctx, chartArea, scales } = chart;
+      const xScale = scales.x;
+      if (!chartArea) return;
+      const pixelForIndex = (idx) => {
+        const i0 = Math.floor(idx);
+        const i1 = Math.ceil(idx);
+        const p0 = xScale.getPixelForValue(i0);
+        if (i0 === i1) return p0;
+        const p1 = xScale.getPixelForValue(i1);
+        return p0 + (p1 - p0) * (idx - i0);
+      };
+      const y = chartArea.bottom;
+      const radius = opts.radius || 5;
+      ctx.save();
+      ctx.fillStyle = opts.color || "#c98a1f";
+      ctx.strokeStyle = opts.borderColor || "#fff";
+      ctx.lineWidth = 1.5;
+      for (const m of markers) {
+        const x = pixelForIndex(m.index);
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+      }
+      ctx.restore();
+    },
+  };
+  Chart.register(milestoneMarkersPlugin);
 
   // ---------- Theme ----------
   function initTheme() {
@@ -1071,6 +1146,7 @@
           legend: { display: false },
           tooltip: tooltipBase((v) => fmtInt.format(v), availability),
           yearBands: yearBandsOptions(),
+          milestoneMarkers: milestoneMarkersOptions(),
         },
         scales: {
           x: quarterXScale(),
@@ -1122,6 +1198,7 @@
           legend: { display: false },
           tooltip: tooltipBase((v) => fmtInt.format(v), availability),
           yearBands: yearBandsOptions(),
+          milestoneMarkers: milestoneMarkersOptions(),
         },
         scales: {
           x: quarterXScale(),
@@ -1164,6 +1241,7 @@
           legend: { display: false },
           tooltip: tooltipBase((v) => `${v.toFixed(1)}%`, availability),
           yearBands: yearBandsOptions(),
+          milestoneMarkers: milestoneMarkersOptions(),
         },
         scales: {
           x: quarterXScale(),
@@ -1248,6 +1326,7 @@
           legend: { display: false },
           tooltip: tooltipBase(fmtPp, changeAvailability),
           yearBands: yearBandsOptions(),
+          milestoneMarkers: milestoneMarkersOptions(),
         },
         scales: {
           x: quarterXScale(),
@@ -1312,6 +1391,7 @@
             filter: (item) => item.dataset.label !== "Reference" && tooltipItemFilter(item),
           }),
           yearBands: yearBandsOptions(),
+          milestoneMarkers: milestoneMarkersOptions(),
         },
         scales: {
           x: quarterXScale(),
@@ -1362,6 +1442,7 @@
           legend: { display: false },
           tooltip: tooltipBase((v) => `${v.toFixed(1)} mo`, availability),
           yearBands: yearBandsOptions(),
+          milestoneMarkers: milestoneMarkersOptions(),
         },
         scales: {
           x: quarterXScale(),
