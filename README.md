@@ -189,10 +189,11 @@ one quarter (see Data-quality notes).
   URL (`?yearMode=cy`) like the other view state. The administration
   shading is unaffected by this toggle since it's keyed off `periodEnd`
   directly, not the fiscal/calendar quarter label.
-- **Policy milestone markers:** every chart marks six dated USCIS policy
-  changes (`POLICY_MILESTONES` in `assets/app.js`) with a small dot right on
-  the x-axis, positioned by exact date rather than snapped to the middle of
-  whichever quarter it falls in. `milestoneMarkers()` finds the quarter via
+- **Policy milestone markers:** every chart marks dated USCIS policy changes
+  (`POLICY_MILESTONES` in `assets/app.js`) with a small dot right on the
+  x-axis, positioned by exact date rather than snapped to the middle of
+  whichever quarter it falls in -- six on N-400 (two of them, the
+  naturalization civics test dates, are N-400-only) and four on I-485. `milestoneMarkers()` finds the quarter via
   `quarterIndexForDate()` (matching against `periodStart`/`periodEnd`) and
   computes a 0-1 day-fraction within it (`dayFractionInQuarter()`), then
   remaps that to `frac - 0.5` before adding it to the quarter's integer
@@ -216,7 +217,15 @@ one quarter (see Data-quality notes).
   uses the exact date, two milestones landing in the same quarter (the 2020
   fee rule and the 2020 civics test, both FY2021 Q1) land at naturally
   different x positions rather than needing to be stacked. A new milestone
-  only needs an entry added to `POLICY_MILESTONES`, nothing else.
+  only needs an entry added to `POLICY_MILESTONES`, nothing else. A
+  milestone can also carry a `forms: ["n400"]` (or `["i485"]`) restriction --
+  the civics test dates are N-400-only, since the civics test isn't part of
+  I-485's adjustment-of-status process; `milestonesForActiveForm()` filters
+  on `state.formKey` before any of the above runs, so an I-485 chart never
+  builds those two milestones' datasets or dots in the first place. Each
+  form's footer note (`FORMS.<form>.milestoneNote`, applied in
+  `applyFormText()`) is written to match which milestones actually show for
+  that form, since it's static text rather than generated from the list.
 
 ## Local preview
 
