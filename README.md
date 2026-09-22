@@ -189,7 +189,7 @@ one quarter (see Data-quality notes).
   URL (`?yearMode=cy`) like the other view state. The administration
   shading is unaffected by this toggle since it's keyed off `periodEnd`
   directly, not the fiscal/calendar quarter label.
-- **Policy milestone markers:** every chart marks five dated USCIS policy
+- **Policy milestone markers:** every chart marks six dated USCIS policy
   changes (`POLICY_MILESTONES` in `assets/app.js`) with a small dot right on
   the x-axis, positioned by exact date rather than snapped to the middle of
   whichever quarter it falls in. `milestoneMarkers()` finds the quarter via
