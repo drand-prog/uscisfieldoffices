@@ -1,0 +1,480 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Page Editor</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%23233044'/%3E%3Ctext x='16' y='22' font-family='Georgia,serif' font-size='17' font-weight='700' text-anchor='middle' fill='%23f4efe6'%3E60%3C/text%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #f6f5f1; --surface: #ffffff; --surface-2: #faf9f6; --text: #1d2330; --muted: #5d6573;
+  --line: #e0ddd5; --focus: #1f5fa8; --btn: #233044; --btn-text: #ffffff;
+  --dem: #2f5fb3; --rep: #b23a3a; --ok: #1e7a46; --warn: #9a6200; --err: #b23a3a;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121418; --surface: #1b1f27; --surface-2: #171a21; --text: #e7e9ee; --muted: #9aa3b2;
+    --line: #2c323d; --focus: #8ab4f8; --btn: #e7e9ee; --btn-text: #14171d;
+    --dem: #7fa6ec; --rep: #ec8a8a; --ok: #6fcf97; --warn: #e0b35a; --err: #ec8a8a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121418; --surface: #1b1f27; --surface-2: #171a21; --text: #e7e9ee; --muted: #9aa3b2;
+  --line: #2c323d; --focus: #8ab4f8; --btn: #e7e9ee; --btn-text: #14171d;
+  --dem: #7fa6ec; --rep: #ec8a8a; --ok: #6fcf97; --warn: #e0b35a; --err: #ec8a8a;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+a { color: var(--focus); }
+.wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px; }
+header.bar {
+  position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--line);
+}
+header.bar .wrap { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding-top: 10px; padding-bottom: 10px; }
+header.bar h1 { font-size: 16px; margin: 0; flex: 1 1 auto; }
+header.bar h1 small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.status { font-size: 13px; color: var(--muted); }
+.status.dirty { color: var(--warn); }
+.tabs { display: flex; gap: 4px; }
+.tabs button { background: none; border: 1px solid transparent; color: var(--muted); padding: 5px 10px; border-radius: 6px; cursor: pointer; font: inherit; }
+.tabs button[aria-selected="true"] { border-color: var(--line); color: var(--text); background: var(--surface-2); font-weight: 600; }
+button.btn, .btn {
+  font: inherit; font-size: 14px; border-radius: 6px; padding: 6px 12px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--text);
+}
+button.btn.primary { background: var(--btn); color: var(--btn-text); border-color: var(--btn); font-weight: 600; }
+button.btn:disabled { opacity: .5; cursor: default; }
+button.mini {
+  font: inherit; font-size: 12px; border: 1px solid var(--line); background: var(--surface); color: var(--muted);
+  border-radius: 5px; padding: 2px 8px; cursor: pointer;
+}
+button.mini:hover { color: var(--text); }
+button.mini.danger:hover { color: var(--err); border-color: var(--err); }
+main { padding: 20px 0 80px; }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.panel h2 { font-size: 15px; margin: 0 0 12px; }
+.grid { display: grid; gap: 10px 14px; grid-template-columns: 1fr; }
+@media (min-width: 720px) { .grid.cols { grid-template-columns: repeat(3, 1fr); } }
+label.f { display: block; font-size: 12px; font-weight: 600; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .04em; }
+input[type=text], input[type=password], input[type=search], textarea {
+  width: 100%; font: inherit; color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px;
+}
+textarea { resize: vertical; min-height: 38px; field-sizing: content; line-height: 1.45; }
+input:focus, textarea:focus { outline: 2px solid var(--focus); outline-offset: -1px; border-color: transparent; }
+input.title-in { font-size: 17px; font-weight: 600; }
+.help { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.msg { font-size: 13px; margin-top: 10px; white-space: pre-wrap; }
+.msg.ok { color: var(--ok); } .msg.err { color: var(--err); } .msg.warn { color: var(--warn); }
+details.sec, details.ent { border: 1px solid var(--line); border-radius: 10px; background: var(--surface); margin-bottom: 12px; }
+details.sec { border-left: 4px solid var(--line); }
+details.sec.p-d { border-left-color: var(--dem); }
+details.sec.p-r { border-left-color: var(--rep); }
+details.ent { background: var(--surface-2); margin: 10px 0; border-radius: 8px; }
+details > summary { cursor: pointer; padding: 10px 14px; display: flex; gap: 10px; align-items: baseline; list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary::before { content: "▸"; color: var(--muted); flex: none; width: 10px; }
+details[open] > summary::before { content: "▾"; }
+details.sec > summary { font-weight: 700; font-size: 16px; }
+details.ent > summary { font-weight: 600; }
+summary .count { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--muted); flex: none; }
+.body { padding: 0 14px 14px; }
+.block { border-left: 2px solid var(--line); padding-left: 10px; margin: 12px 0; }
+.block-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
+.block-head span { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; font-weight: 600; }
+.item { display: flex; gap: 6px; align-items: flex-start; margin-bottom: 6px; }
+.item::before { content: "•"; color: var(--muted); padding-top: 8px; }
+.item textarea { flex: 1; }
+.adds { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+.hidden { display: none !important; }
+#preview iframe { width: 100%; height: calc(100vh - 150px); border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+#md-raw { min-height: 70vh; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; field-sizing: fixed; }
+.banner { background: var(--surface); border: 1px solid var(--warn); border-radius: 10px; padding: 10px 14px; margin-bottom: 16px; font-size: 14px; }
+kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
+</style>
+</head>
+<body>
+<header class="bar">
+  <div class="wrap">
+    <h1>Page Editor <small id="doc-title"></small></h1>
+    <span class="status" id="status">Loading…</span>
+    <div class="tabs" role="tablist">
+      <button role="tab" data-tab="edit" aria-selected="true">Edit</button>
+      <button role="tab" data-tab="preview" aria-selected="false">Preview</button>
+      <button role="tab" data-tab="markdown" aria-selected="false">Markdown</button>
+      <button role="tab" data-tab="publish" aria-selected="false">Publish</button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <div id="draft-banner" class="banner hidden">
+    Restored an unpublished draft saved in this browser.
+    <button class="mini" id="discard-draft">Discard draft and reload published text</button>
+  </div>
+
+  <!-- EDIT -->
+  <section id="edit" role="tabpanel">
+    <div class="panel">
+      <div class="row">
+        <input type="search" id="filter" placeholder="Filter bills and sections by text…" style="flex:1;min-width:200px">
+        <button class="mini" id="expand-all">Expand all</button>
+        <button class="mini" id="collapse-all">Collapse all</button>
+      </div>
+      <p class="help">Text supports <kbd>**bold**</kbd> and links written as <kbd>[label](https://…)</kbd>. Edits are saved as a draft in this browser automatically; nothing goes live until you publish.</p>
+    </div>
+    <div id="form"></div>
+  </section>
+
+  <!-- PREVIEW -->
+  <section id="preview" role="tabpanel" class="hidden">
+    <iframe title="Page preview" sandbox="allow-same-origin allow-scripts allow-popups"></iframe>
+  </section>
+
+  <!-- MARKDOWN -->
+  <section id="markdown" role="tabpanel" class="hidden">
+    <div class="panel">
+      <p class="help" style="margin-top:0">The whole page as Markdown. Changes here replace the form when you switch tabs.</p>
+      <textarea id="md-raw" spellcheck="false"></textarea>
+      <div class="adds">
+        <button class="btn" id="download-md">Download content.md</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- PUBLISH -->
+  <section id="publish" role="tabpanel" class="hidden">
+    <div class="panel">
+      <h2>GitHub connection</h2>
+      <div class="grid cols">
+        <div><label class="f" for="gh-owner">Owner</label><input type="text" id="gh-owner"></div>
+        <div><label class="f" for="gh-repo">Repository</label><input type="text" id="gh-repo"></div>
+        <div><label class="f" for="gh-branch">Branch</label><input type="text" id="gh-branch"></div>
+      </div>
+      <div class="grid" style="margin-top:10px">
+        <div><label class="f" for="gh-dir">Folder in repository</label><input type="text" id="gh-dir"></div>
+        <div>
+          <label class="f" for="gh-token">Access token</label>
+          <input type="password" id="gh-token" autocomplete="off" placeholder="github_pat_…">
+          <p class="help">A fine-grained personal access token limited to this one repository, with <b>Contents: Read and write</b>. It is sent only to api.github.com.</p>
+          <label class="row" style="margin-top:6px;font-size:14px"><input type="checkbox" id="gh-remember"> Remember token on this device</label>
+        </div>
+      </div>
+      <div class="adds">
+        <button class="btn" id="load-gh">Load latest text from GitHub</button>
+      </div>
+      <div class="msg" id="load-msg"></div>
+    </div>
+    <div class="panel">
+      <h2>Publish</h2>
+      <label class="f" for="commit-msg">Change note</label>
+      <input type="text" id="commit-msg" placeholder="Update filibuster page text">
+      <p class="help">Publishing makes one commit that updates <code>content.md</code> and the generated <code>index.html</code>. If the site is deployed from this branch on Vercel, it redeploys automatically, usually within a minute.</p>
+      <div class="adds">
+        <button class="btn primary" id="publish-btn">Publish changes</button>
+      </div>
+      <div class="msg" id="pub-msg"></div>
+    </div>
+  </section>
+</main>
+
+<script type="module">
+import { parse, serialize, renderPage } from "../lib/render.js";
+
+const $ = (id) => document.getElementById(id);
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch {} },
+  sget(k) { try { return sessionStorage.getItem(k); } catch { return null; } },
+  sset(k, v) { try { v == null ? sessionStorage.removeItem(k) : sessionStorage.setItem(k, v); } catch {} },
+};
+const DRAFT_KEY = "filibuster-admin-draft";
+const CFG_KEY = "filibuster-admin-config";
+const TOKEN_KEY = "filibuster-admin-token";
+
+let model = null;      // the document being edited
+let baseline = "";     // Markdown last loaded from the site or GitHub
+const open = new WeakSet(); // which sections/entries are expanded
+
+// ---------- config ----------
+const defaults = { owner: "drand-prog", repo: "uscisfieldoffices", branch: "main", dir: "filibuster" };
+const cfg = { ...defaults, ...JSON.parse(store.get(CFG_KEY) || "{}") };
+for (const k of Object.keys(defaults)) {
+  const el = $("gh-" + k);
+  el.value = cfg[k];
+  el.addEventListener("input", () => { cfg[k] = el.value.trim(); store.set(CFG_KEY, JSON.stringify(cfg)); });
+}
+$("gh-token").value = store.get(TOKEN_KEY) || store.sget(TOKEN_KEY) || "";
+$("gh-remember").checked = !!store.get(TOKEN_KEY);
+function saveToken() {
+  const t = $("gh-token").value.trim();
+  store.sset(TOKEN_KEY, t || null);
+  store.set(TOKEN_KEY, $("gh-remember").checked && t ? t : null);
+}
+$("gh-token").addEventListener("input", saveToken);
+$("gh-remember").addEventListener("change", saveToken);
+
+// ---------- state ----------
+const currentMd = () => serialize(model);
+function changed() {
+  const md = currentMd();
+  const dirty = md !== baseline;
+  $("status").textContent = dirty ? "Unpublished changes" : "No changes";
+  $("status").classList.toggle("dirty", dirty);
+  $("doc-title").textContent = model.title;
+  store.set(DRAFT_KEY, dirty ? JSON.stringify({ md, baseline }) : null);
+}
+function load(md, base = md) {
+  model = parse(md);
+  baseline = base;
+  model.sections.forEach((s) => s.title.toLowerCase().startsWith("appendix") || open.add(s));
+  renderForm();
+  changed();
+}
+window.addEventListener("beforeunload", (e) => { if (model && currentMd() !== baseline) e.preventDefault(); });
+
+// ---------- form ----------
+function el(tag, props = {}, ...kids) {
+  const n = Object.assign(document.createElement(tag), props);
+  for (const k of kids) if (k != null) n.append(k);
+  return n;
+}
+function textField(get, set, { input = false, cls = "", placeholder = "" } = {}) {
+  const f = el(input ? "input" : "textarea", { value: get(), className: cls, placeholder, spellcheck: true });
+  if (input) f.type = "text"; else f.rows = 1;
+  f.addEventListener("input", () => { set(f.value); changed(); });
+  return f;
+}
+function mini(label, onClick, danger = false) {
+  return el("button", { type: "button", className: "mini" + (danger ? " danger" : ""), textContent: label, onclick: onClick });
+}
+function confirmRemove(what) { return confirm(`Remove this ${what}? You can still discard the change before publishing.`); }
+function structural(fn) { return () => { if (fn() !== false) { renderForm(); changed(); } }; }
+
+function blocksEditor(blocks) {
+  const wrap = el("div");
+  blocks.forEach((b, bi) => {
+    const box = el("div", { className: "block" });
+    const kind = b.type === "ul" ? "Bullet list" : "Paragraph";
+    box.append(el("div", { className: "block-head" }, el("span", { textContent: kind }),
+      mini("Remove " + kind.toLowerCase(), structural(() => confirmRemove(kind.toLowerCase()) && !!blocks.splice(bi, 1)), true)));
+    if (b.type === "p") {
+      box.append(textField(() => b.text, (v) => { b.text = v; }));
+    } else {
+      b.items.forEach((_, ii) => {
+        box.append(el("div", { className: "item" },
+          textField(() => b.items[ii], (v) => { b.items[ii] = v; }),
+          mini("✕", structural(() => confirmRemove("bullet") && !!b.items.splice(ii, 1)), true)));
+      });
+      box.append(el("div", { className: "adds" }, mini("+ Bullet", structural(() => { b.items.push(""); }))));
+    }
+    wrap.append(box);
+  });
+  wrap.append(el("div", { className: "adds" },
+    mini("+ Paragraph", structural(() => { blocks.push({ type: "p", text: "" }); })),
+    mini("+ Bullet list", structural(() => { blocks.push({ type: "ul", items: [""] }); }))));
+  return wrap;
+}
+
+function collapsible(obj, cls, summaryKids, bodyKids, forceOpen) {
+  const d = el("details", { className: cls });
+  d.open = forceOpen || open.has(obj);
+  d.addEventListener("toggle", () => (d.open ? open.add(obj) : open.delete(obj)));
+  d.append(el("summary", {}, ...summaryKids), el("div", { className: "body" }, ...bodyKids));
+  return d;
+}
+
+function entryText(e) { return (e.title + " " + e.blocks.map((b) => b.text ?? b.items.join(" ")).join(" ")).toLowerCase(); }
+
+function renderForm() {
+  const q = $("filter").value.trim().toLowerCase();
+  const form = $("form");
+  form.replaceChildren();
+
+  if (!q) {
+    form.append(el("div", { className: "panel" },
+      el("h2", { textContent: "Page header" }),
+      el("label", { className: "f", textContent: "Page title" }),
+      textField(() => model.title, (v) => { model.title = v; }, { input: true, cls: "title-in" }),
+      el("p", { className: "help", textContent: "Intro text below the title. A first paragraph starting with “Updated ” is shown as the date line." }),
+      blocksEditor(model.lead)));
+  }
+
+  model.sections.forEach((sec, si) => {
+    const party = /^(democratic|appendix a)/i.test(sec.title) ? "p-d" : /^(republican|appendix b)/i.test(sec.title) ? "p-r" : "";
+    const entries = sec.entries.map((e, ei) => ({ e, ei })).filter(({ e }) => !q || entryText(e).includes(q));
+    const secMatch = !q || sec.title.toLowerCase().includes(q) || sec.blocks.some((b) => (b.text ?? b.items.join(" ")).toLowerCase().includes(q));
+    if (q && !entries.length && !secMatch) return;
+
+    const entryEls = entries.map(({ e, ei }) => {
+      const summaryText = el("span", { textContent: e.title || "(untitled entry)" });
+      const titleIn = textField(() => e.title, (v) => { e.title = v; summaryText.textContent = v || "(untitled entry)"; }, { input: true, cls: "title-in" });
+      return collapsible(e, "ent", [summaryText], [
+        el("label", { className: "f", textContent: "Heading" }), titleIn,
+        blocksEditor(e.blocks),
+        el("div", { className: "adds", style: "justify-content:flex-end" },
+          ei > 0 ? mini("↑ Move up", structural(() => { sec.entries.splice(ei - 1, 0, ...sec.entries.splice(ei, 1)); })) : null,
+          ei < sec.entries.length - 1 ? mini("↓ Move down", structural(() => { sec.entries.splice(ei + 1, 0, ...sec.entries.splice(ei, 1)); })) : null,
+          mini("Remove entry", structural(() => confirmRemove("entry") && !!sec.entries.splice(ei, 1)), true)),
+      ], !!q);
+    });
+
+    const secSummary = el("span", { textContent: sec.title || "(untitled section)" });
+    form.append(collapsible(sec, "sec " + party, [secSummary, el("span", { className: "count", textContent: sec.entries.length ? `${sec.entries.length} entries` : "" })], [
+      el("label", { className: "f", textContent: "Section heading" }),
+      textField(() => sec.title, (v) => { sec.title = v; secSummary.textContent = v || "(untitled section)"; }, { input: true, cls: "title-in" }),
+      q ? null : blocksEditor(sec.blocks),
+      ...entryEls,
+      q ? null : el("div", { className: "adds" },
+        mini("+ Entry", structural(() => { const e = { title: "", blocks: [{ type: "ul", items: [""] }] }; sec.entries.push(e); open.add(e); })),
+        mini("Remove section", structural(() => confirmRemove("section and everything in it") && !!model.sections.splice(si, 1)), true)),
+    ], !!q));
+  });
+
+  if (!q) form.append(el("div", { className: "adds" },
+    mini("+ Section", structural(() => { const s = { title: "", blocks: [], entries: [] }; model.sections.push(s); open.add(s); }))));
+  if (q && !form.children.length) form.append(el("p", { className: "help", textContent: "No matches." }));
+}
+
+let filterTimer;
+$("filter").addEventListener("input", () => { clearTimeout(filterTimer); filterTimer = setTimeout(renderForm, 150); });
+$("expand-all").onclick = () => { model.sections.forEach((s) => { open.add(s); s.entries.forEach((e) => open.add(e)); }); renderForm(); };
+$("collapse-all").onclick = () => { model.sections.forEach((s) => { open.delete(s); s.entries.forEach((e) => open.delete(e)); }); renderForm(); };
+
+// ---------- tabs ----------
+let tab = "edit";
+function showTab(name) {
+  if (tab === "markdown" && name !== "markdown") {
+    const raw = $("md-raw").value;
+    if (raw !== currentMd()) { model = parse(raw); renderForm(); changed(); }
+  }
+  tab = name;
+  document.querySelectorAll("[role=tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  document.querySelectorAll("[role=tabpanel]").forEach((p) => p.classList.toggle("hidden", p.id !== name));
+  if (name === "preview") document.querySelector("#preview iframe").srcdoc = renderPage(currentMd());
+  if (name === "markdown") $("md-raw").value = currentMd();
+}
+document.querySelectorAll("[role=tab]").forEach((b) => (b.onclick = () => showTab(b.dataset.tab)));
+$("md-raw").addEventListener("input", () => {
+  const dirty = $("md-raw").value !== baseline;
+  $("status").textContent = dirty ? "Unpublished changes" : "No changes";
+  $("status").classList.toggle("dirty", dirty);
+});
+$("download-md").onclick = () => {
+  const md = tab === "markdown" ? $("md-raw").value : currentMd();
+  const a = el("a", { href: URL.createObjectURL(new Blob([md], { type: "text/markdown" })), download: "content.md" });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+};
+
+// ---------- GitHub ----------
+const token = () => $("gh-token").value.trim();
+const path = (f) => (cfg.dir ? cfg.dir.replace(/\/+$/, "") + "/" : "") + f;
+async function gh(method, url, body) {
+  const res = await fetch(`https://api.github.com/repos/${cfg.owner}/${cfg.repo}${url}`, {
+    method,
+    headers: { Accept: "application/vnd.github+json", Authorization: `Bearer ${token()}`, "X-GitHub-Api-Version": "2022-11-28", ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const hint = res.status === 401 ? " (token invalid or expired)" : res.status === 403 ? " (token lacks Contents write access to this repository)" : res.status === 404 ? " (repository, branch or file not found, or the token cannot see it)" : res.status === 409 || res.status === 422 ? " (the branch changed while publishing; load the latest text and try again)" : "";
+    throw new Error(`GitHub ${res.status}: ${data.message || res.statusText}${hint}`);
+  }
+  return data;
+}
+function b64ToText(b64) {
+  const bin = atob(b64.replace(/\s/g, ""));
+  return new TextDecoder().decode(Uint8Array.from(bin, (c) => c.charCodeAt(0)));
+}
+async function fetchRemoteMd() {
+  const f = await gh("GET", `/contents/${encodeURI(path("content.md"))}?ref=${encodeURIComponent(cfg.branch)}`);
+  return b64ToText(f.content);
+}
+function need(fields) {
+  if (!token()) throw new Error("Enter an access token first.");
+  for (const k of fields) if (!cfg[k]) throw new Error(`Enter the ${k}.`);
+}
+
+$("load-gh").onclick = async () => {
+  const msg = $("load-msg");
+  msg.className = "msg"; msg.textContent = "Loading…";
+  try {
+    need(["owner", "repo", "branch"]);
+    const md = await fetchRemoteMd();
+    if (currentMd() !== baseline && !confirm("Replace your unpublished edits with the text from GitHub?")) { msg.textContent = ""; return; }
+    load(md);
+    $("draft-banner").classList.add("hidden");
+    msg.className = "msg ok"; msg.textContent = `Loaded ${path("content.md")} from ${cfg.branch}.`;
+  } catch (e) { msg.className = "msg err"; msg.textContent = e.message; }
+};
+
+$("publish-btn").onclick = async () => {
+  const msg = $("pub-msg");
+  const btn = $("publish-btn");
+  msg.className = "msg"; msg.textContent = "";
+  try {
+    need(["owner", "repo", "branch"]);
+    const md = currentMd();
+    const remote = await fetchRemoteMd().catch((e) => { if (/GitHub 404/.test(e.message)) return null; throw e; });
+    if (remote === md) { msg.className = "msg ok"; msg.textContent = "The published text already matches. Nothing to publish."; baseline = md; changed(); return; }
+    if (remote !== null && remote !== baseline &&
+        !confirm("The text on GitHub has changed since you loaded it (someone else may have edited it). Publishing will overwrite those changes. Continue?")) return;
+    btn.disabled = true; msg.textContent = "Publishing…";
+    const ref = await gh("GET", `/git/ref/heads/${encodeURIComponent(cfg.branch)}`);
+    const parent = await gh("GET", `/git/commits/${ref.object.sha}`);
+    const tree = await gh("POST", "/git/trees", {
+      base_tree: parent.tree.sha,
+      tree: [
+        { path: path("content.md"), mode: "100644", type: "blob", content: md },
+        { path: path("index.html"), mode: "100644", type: "blob", content: renderPage(md) },
+      ],
+    });
+    const commit = await gh("POST", "/git/commits", {
+      message: $("commit-msg").value.trim() || "Update filibuster page text",
+      tree: tree.sha, parents: [ref.object.sha],
+    });
+    await gh("PATCH", `/git/refs/heads/${encodeURIComponent(cfg.branch)}`, { sha: commit.sha });
+    baseline = md; changed();
+    $("draft-banner").classList.add("hidden");
+    $("commit-msg").value = "";
+    msg.className = "msg ok";
+    msg.replaceChildren("Published. ", el("a", { href: commit.html_url, target: "_blank", rel: "noopener", textContent: "View commit " + commit.sha.slice(0, 7) }),
+      ". The live site updates after Vercel finishes deploying.");
+  } catch (e) { msg.className = "msg err"; msg.textContent = e.message; }
+  finally { btn.disabled = false; }
+};
+
+// ---------- start ----------
+$("discard-draft").onclick = () => {
+  if (!confirm("Discard the saved draft?")) return;
+  store.set(DRAFT_KEY, null);
+  load(published);
+  $("draft-banner").classList.add("hidden");
+};
+let published = "";
+try {
+  const res = await fetch("../content.md", { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  published = await res.text();
+  const draft = JSON.parse(store.get(DRAFT_KEY) || "null");
+  if (draft && draft.md !== published) {
+    // Keep the draft's own starting text so publishing can warn if the
+    // published text has moved on since the draft was begun.
+    load(draft.md, draft.baseline ?? published);
+    $("draft-banner").classList.remove("hidden");
+  } else {
+    load(published);
+  }
+} catch (e) {
+  $("status").textContent = "Could not load content.md (" + e.message + "). Use Publish → Load latest text from GitHub.";
+  load("# \n");
+}
+</script>
+</body>
+</html>
