@@ -240,3 +240,18 @@ then open `http://localhost:8000/`.
 Point Vercel at this repo (or `vercel --prod` from a checkout) — it's a plain
 static site with no build step, so Vercel's default static-site detection
 handles it with no configuration.
+
+## Filibuster Policy Failures page (`filibuster/`)
+
+A separate, self-contained static page, unrelated to the USCIS dashboard.
+
+```
+filibuster/content.md        source text (exported from a Claude Docs document)
+filibuster/index.html        generated page; do not edit by hand
+scripts/build_filibuster.py  builds index.html from content.md (stdlib only)
+```
+
+To update: edit `filibuster/content.md`, run `python3 scripts/build_filibuster.py`,
+and commit both files. To deploy it as its own site on Vercel, import this repo
+as a new project and set **Root Directory** to `filibuster` (Framework preset:
+Other; no build command or output directory needed).
