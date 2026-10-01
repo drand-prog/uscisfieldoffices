@@ -240,32 +240,3 @@ then open `http://localhost:8000/`.
 Point Vercel at this repo (or `vercel --prod` from a checkout) — it's a plain
 static site with no build step, so Vercel's default static-site detection
 handles it with no configuration.
-
-## Filibuster Policy Failures page (`filibuster/`)
-
-A separate, self-contained static page, unrelated to the USCIS dashboard.
-
-```
-filibuster/content.md          source text (exported from a Claude Docs document)
-filibuster/index.html          generated page; do not edit by hand
-filibuster/lib/render.js       Markdown parser/serializer + page renderer (shared)
-filibuster/admin/index.html    browser editor for every field; publishes to GitHub
-scripts/build_filibuster.mjs   rebuilds index.html from content.md (Node 18+, no deps)
-```
-
-**Editing in the browser:** open `/admin/` on the deployed site. Every heading,
-paragraph and bullet is an editable field (entries, bullets and paragraphs can
-also be added, removed or reordered), with a live preview and a raw-Markdown
-tab. Drafts are kept in that browser until published. **Publish** needs a
-GitHub fine-grained personal access token limited to this repository with
-*Contents: Read and write*; it makes one commit updating `content.md` and
-`index.html` on the chosen branch (default `main`), which Vercel then
-redeploys. The admin page is public but can't change anything without such a
-token; it is marked `noindex` and excluded in `robots.txt`.
-
-**Editing by hand:** change `filibuster/content.md`, run
-`node scripts/build_filibuster.mjs`, and commit both files.
-
-**Deploying on Vercel:** import this repo as a new project and set **Root
-Directory** to `filibuster` (Framework preset: Other; no build command or
-output directory needed).
