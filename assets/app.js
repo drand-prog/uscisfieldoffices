@@ -1121,16 +1121,21 @@
   // between forms/metrics, only which offices/colors are drawn on top of it.
   async function loadMapGeo() {
     if (state.mapGeo) return state.mapGeo;
-    const res = await fetch("data/us-states-albers-10m.json");
+    const res = await fetch("data/us-states-10m.json");
     const topology = await res.json();
     const statesGeo = topojson.feature(topology, topology.objects.states);
-    // The topology's coordinates are already Albers-USA-projected (that's
-    // what the "-albers-" file is), so the path generator uses the identity
-    // transform -- no projection argument -- while office lon/lat still
-    // need to go through the matching d3.geoAlbersUsa() to land in the same
-    // coordinate space (verified against known city positions during dev).
-    const pathGen = d3.geoPath();
-    const projection = d3.geoAlbersUsa().scale(1070).translate([480, 250]);
+    // AlbersUSA's own default scale/translate are tuned for a specific
+    // canvas size that doesn't match this map's -- fitSize() computes
+    // values that fit this GeoJSON (continental US + AK/HI) into [1060,
+    // 600] instead. Using one projection instance for both the state paths
+    // (via geoPath) and every office's lon/lat guarantees they can't drift
+    // out of sync; an earlier version used a separately pre-projected
+    // basemap plus a guessed-at-matching scale/translate for the office
+    // points, which put every dot tens to hundreds of miles off (verified
+    // by checking projected city positions against their actual state's
+    // bounds -- see "National map" in the README).
+    const projection = d3.geoAlbersUsa().fitSize([1060, 600], statesGeo);
+    const pathGen = d3.geoPath(projection);
     state.mapGeo = { statesGeo, pathGen, projection };
     return state.mapGeo;
   }
