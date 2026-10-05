@@ -167,6 +167,15 @@
     </div>
     <p class="chart-note" id="map-metric-note"></p>
 
+    <div class="year-mode-row">
+      <span class="year-mode-label">Flag offices as notable when they're this unusual</span>
+      <div class="form-toggle lag-toggle" id="map-sensitivity-toggle" role="tablist" aria-label="Outlier sensitivity">
+        <button type="button" role="tab" data-sensitivity="20">1 in 20 (strictest)</button>
+        <button type="button" role="tab" data-sensitivity="10" aria-selected="true">1 in 10 (default)</button>
+        <button type="button" role="tab" data-sensitivity="5">1 in 5 (most offices flagged)</button>
+      </div>
+    </div>
+
     <section class="chart-card">
       <h2>Field offices <span id="map-quarter-label"></span></h2>
       <div class="legend-row" id="map-legend"></div>
