@@ -1220,6 +1220,7 @@
     const mapGeo = await loadMapGeo();
     if (state.page !== "map") return; // user navigated away while the basemap was loading
     svg.innerHTML = "";
+    hideMapTooltip();
 
     const statesGroup = svgEl("g", { class: "map-states" });
     for (const feature of mapGeo.statesGeo.features) {
@@ -1257,18 +1258,17 @@
         class: `map-dot ${cls}`,
         tabindex: "0",
         role: "button",
+        "aria-label": `${row.name} (${row.code}), ${row.state}`,
       });
-      circle
-        .appendChild(svgEl("title"))
-        .appendChild(
-          document.createTextNode(
-            `${row.name} (${row.state}) — ${metric.format(row[metric.valueKey])}${isOutlier ? (concern ? "  • notable" : "  • standout") : ""}`
-          )
-        );
       circle.addEventListener("click", () => selectOfficeFromMap(row.code));
       circle.addEventListener("keydown", (ev) => {
         if (ev.key === "Enter" || ev.key === " ") selectOfficeFromMap(row.code);
       });
+      const show = () => showMapTooltip(circle, row, metric, isOutlier, concern);
+      circle.addEventListener("mouseenter", show);
+      circle.addEventListener("focus", show);
+      circle.addEventListener("mouseleave", hideMapTooltip);
+      circle.addEventListener("blur", hideMapTooltip);
       dotsGroup.appendChild(circle);
     }
     svg.appendChild(dotsGroup);
@@ -1283,6 +1283,39 @@
     select.value = code;
     select.dispatchEvent(new Event("change")); // same path the outlier panel uses, so office-select stays in sync
     window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // A custom tooltip rather than the dot's native SVG <title> -- a native
+  // title tooltip has a ~1s hover delay and tiny plain-text styling, easy to
+  // miss on a 3-6px dot, whereas this shows immediately and matches the
+  // rest of the app's look. Anchored to the dot's own screen position
+  // (not the cursor), via getBoundingClientRect so it's correct regardless
+  // of how the SVG's viewBox is currently scaled.
+  function showMapTooltip(circle, row, metric, isOutlier, concern) {
+    const tooltip = document.getElementById("map-tooltip");
+    const wrapRect = circle.closest(".map-wrap").getBoundingClientRect();
+    const dotRect = circle.getBoundingClientRect();
+    tooltip.style.left = `${dotRect.left + dotRect.width / 2 - wrapRect.left}px`;
+    tooltip.style.top = `${dotRect.top - wrapRect.top - 6}px`;
+
+    tooltip.innerHTML = "";
+    const strong = document.createElement("strong");
+    strong.textContent = `${row.name} (${row.code})`;
+    tooltip.appendChild(strong);
+    const loc = document.createElement("div");
+    loc.className = "map-tooltip-loc";
+    loc.textContent = row.state || "";
+    tooltip.appendChild(loc);
+    const val = document.createElement("div");
+    const status = isOutlier ? (concern ? " · notable" : " · standout") : "";
+    val.textContent = `${metric.label}: ${metric.format(row[metric.valueKey])}${status}`;
+    tooltip.appendChild(val);
+
+    tooltip.hidden = false;
+  }
+
+  function hideMapTooltip() {
+    document.getElementById("map-tooltip").hidden = true;
   }
 
   function renderMapLegend(metric) {
