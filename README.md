@@ -270,7 +270,12 @@ one quarter (see Data-quality notes).
   with a single suppressed cell. Clicking a dot (or an office in the list
   below the map) jumps to the Dashboard view with that office selected, via
   the same `office-select` change event the existing outlier panel uses, so
-  the dropdown stays in sync.
+  the dropdown stays in sync. Hovering (or focusing, via keyboard) a dot
+  shows its office name, state, and the selected metric's value in a custom
+  tooltip (`#map-tooltip`, positioned via `getBoundingClientRect()` so it's
+  correct regardless of the SVG's current viewBox scale) rather than the
+  dot's native SVG `<title>` — a native title tooltip has a ~1s hover delay
+  and tiny plain-text styling, easy to miss on a 3-6px dot.
 
 ## Local preview
 
