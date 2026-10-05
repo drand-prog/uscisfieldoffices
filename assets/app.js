@@ -1166,6 +1166,20 @@
     return MAP_SENSITIVITY_LEVELS[state.mapSensitivity];
   }
 
+  const MAP_DOT_R_TYPICAL = 3;
+  const MAP_DOT_R_OUTLIER_MIN = 6; // at the sensitivity threshold itself
+  const MAP_DOT_R_OUTLIER_MAX = 11; // reached once |z| is 1.2 past the threshold
+  const MAP_DOT_R_OUTLIER_SPAN = 1.2;
+
+  // Dot size grows with how far past the "notable" cutoff an office's
+  // z-score sits, so an office that's barely notable and one that's wildly
+  // notable don't look the same -- capped so a single extreme outlier can't
+  // dwarf the rest of the map.
+  function outlierDotRadius(absZ, threshold) {
+    const t = Math.min(1, Math.max(0, (absZ - threshold) / MAP_DOT_R_OUTLIER_SPAN));
+    return MAP_DOT_R_OUTLIER_MIN + t * (MAP_DOT_R_OUTLIER_MAX - MAP_DOT_R_OUTLIER_MIN);
+  }
+
   const MAP_METRICS = {
     denialRate: {
       label: "Denial rate",
@@ -1285,10 +1299,11 @@
             ? "map-dot-concern"
             : "map-dot-positive"
           : "map-dot-normal";
+      const r = isOutlier ? outlierDotRadius(Math.abs(z), sensitivity.z) : MAP_DOT_R_TYPICAL;
       const circle = svgEl("circle", {
         cx: x,
         cy: y,
-        r: isOutlier ? 6 : 3,
+        r,
         class: `map-dot ${cls}`,
         tabindex: "0",
         role: "button",
@@ -1366,9 +1381,9 @@
     document.getElementById("map-metric-note").textContent =
       `"Typical" offices fall within the normal range for offices their size. "Notable" offices sit far enough ` +
       `from the average for similar-sized offices that fewer than roughly ${sensitivity.label} would normally land ` +
-      `that far out just from ordinary quarter-to-quarter ups and downs (z-score ≥ ${sensitivity.z}). A hollow ` +
-      `dot means this metric isn't available for that office this quarter, usually because USCIS suppressed the ` +
-      `underlying figure for a small count.`;
+      `that far out just from ordinary quarter-to-quarter ups and downs (z-score ≥ ${sensitivity.z}). Larger dots ` +
+      `are further from that typical range. A hollow dot means this metric isn't available for that office this ` +
+      `quarter, usually because USCIS suppressed the underlying figure for a small count.`;
   }
 
   function renderMapOutlierList(metric, outliers, mean, latestKey) {
