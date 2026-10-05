@@ -312,6 +312,16 @@ one quarter (see Data-quality notes).
   "1 in N" phrase and z-score instead of a hardcoded "1 in 10" / "1.3",
   state persists via `?mapSensitivity=`, and switching it re-runs
   `zOutliers()` and re-renders the map and outlier list immediately.
+- **Dot size scales with how abnormal an office is:** outlier dots used to
+  be a single fixed size (6px) regardless of whether an office barely
+  crossed the sensitivity cutoff or blew way past it. `outlierDotRadius()`
+  now scales radius continuously with `|z|`, from 6px right at the cutoff
+  up to an 11px cap once `|z|` is 1.2 past it (`MAP_DOT_R_OUTLIER_SPAN`) --
+  capped so one extreme office can't dwarf the rest of the map. Typical and
+  no-data dots stay at the original fixed 3px, since size only needs to
+  carry meaning where z-score does. The legend note gained a one-line
+  "Larger dots are further from that typical range" to explain the new
+  encoding.
 
 ## Local preview
 
