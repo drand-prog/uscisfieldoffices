@@ -299,6 +299,19 @@ one quarter (see Data-quality notes).
   literal "z-score ≥ 1.3" kept alongside it as a parenthetical, not dropped
   entirely -- a first pass removed it outright, which undersold the rigor
   behind "Notable" for anyone who did know the term.
+- **Outlier sensitivity toggle:** the z-score cutoff behind "Notable" is no
+  longer a fixed `1.3` -- a toggle (`#map-sensitivity-toggle`, same
+  `.form-toggle.lag-toggle` pattern as the year-mode and denial-change-lag
+  toggles) lets the user pick "1 in 20" (strictest, z ≥ 1.645), "1 in 10"
+  (default, z ≥ 1.3, same threshold as before this change), or "1 in 5"
+  (most offices flagged, z ≥ 0.84). The three z-score values are the
+  one-tailed normal-distribution cutoffs for those odds
+  (`MAP_SENSITIVITY_LEVELS`), so the underlying statistic is unchanged --
+  only its label and threshold are user-facing and adjustable. Both the
+  legend note and the outliers-list note interpolate the selected level's
+  "1 in N" phrase and z-score instead of a hardcoded "1 in 10" / "1.3",
+  state persists via `?mapSensitivity=`, and switching it re-runs
+  `zOutliers()` and re-renders the map and outlier list immediately.
 
 ## Local preview
 

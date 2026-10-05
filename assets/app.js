@@ -91,6 +91,7 @@
     denialChangeLag: 1, // 1 (prior quarter) or 4 (four quarters ago)
     yearMode: "fy", // "fy" (fiscal year, default) or "cy" (calendar year) -- x-axis labels
     mapMetric: "denialRate", // one of MAP_METRICS' keys
+    mapSensitivity: "10", // one of MAP_SENSITIVITY_LEVELS' keys
     mapGeo: null, // cached { statesGeo, pathGen, projection } once the basemap loads
     dataset: null,
     quarterKeys: [],
@@ -594,6 +595,11 @@
       url.searchParams.delete("mapMetric");
     } else {
       url.searchParams.set("mapMetric", state.mapMetric);
+    }
+    if (state.mapSensitivity === "10") {
+      url.searchParams.delete("mapSensitivity");
+    } else {
+      url.searchParams.set("mapSensitivity", state.mapSensitivity);
     }
     history.replaceState(null, "", url);
   }
@@ -1147,7 +1153,18 @@
     return mapGeo.projection(coords);
   }
 
-  const MAP_Z_THRESHOLD = 1.3;
+  // z-score thresholds for each "how unusual" level, from the one-tailed
+  // normal distribution (e.g. a z-score of 1.3 or beyond happens by chance
+  // only about 1 time in 10 for a typical office, in one direction).
+  const MAP_SENSITIVITY_LEVELS = {
+    20: { z: 1.645, label: "1 in 20" },
+    10: { z: 1.3, label: "1 in 10" },
+    5: { z: 0.84, label: "1 in 5" },
+  };
+
+  function currentMapSensitivity() {
+    return MAP_SENSITIVITY_LEVELS[state.mapSensitivity];
+  }
 
   const MAP_METRICS = {
     denialRate: {
@@ -1241,7 +1258,8 @@
     const metricKey = state.mapMetric;
     const metric = MAP_METRICS[metricKey];
     const { latestKey, rows } = computeMapRows();
-    const { outliers, mean } = zOutliers(rows, metric.valueKey, metric.volumeKey, metric.minVolume, MAP_Z_THRESHOLD);
+    const sensitivity = currentMapSensitivity();
+    const { outliers, mean } = zOutliers(rows, metric.valueKey, metric.volumeKey, metric.minVolume, sensitivity.z);
     const outlierZByCode = new Map(outliers.map((o) => [o.row.code, o.z]));
 
     document.getElementById("map-empty-note").hidden = rows.some((r) => r[metric.valueKey] != null);
@@ -1344,11 +1362,12 @@
       { label: `Notable (${metric.concernIsHigh ? "lower" : "higher"})`, color: cssVar("--good") },
       { label: "Typical", color: cssVar("--text-muted") },
     ]);
+    const sensitivity = currentMapSensitivity();
     document.getElementById("map-metric-note").textContent =
       `"Typical" offices fall within the normal range for offices their size. "Notable" offices sit far enough ` +
-      `from the average for similar-sized offices that fewer than roughly 1 in 10 would normally land that far ` +
-      `out just from ordinary quarter-to-quarter ups and downs (z-score ≥ ${MAP_Z_THRESHOLD}). A hollow dot ` +
-      `means this metric isn't available for that office this quarter, usually because USCIS suppressed the ` +
+      `from the average for similar-sized offices that fewer than roughly ${sensitivity.label} would normally land ` +
+      `that far out just from ordinary quarter-to-quarter ups and downs (z-score ≥ ${sensitivity.z}). A hollow ` +
+      `dot means this metric isn't available for that office this quarter, usually because USCIS suppressed the ` +
       `underlying figure for a small count.`;
   }
 
@@ -1357,11 +1376,12 @@
     const categorySuffix = state.categoryKey === "total" ? "" : `, ${categoryLabel(state.categoryKey)} only`;
     document.getElementById("map-quarter-label").textContent = `— ${quarter.label}${categorySuffix}`;
     document.getElementById("map-outliers-quarter-label").textContent = `— ${quarter.label}${categorySuffix}`;
+    const sensitivity = currentMapSensitivity();
     document.getElementById("map-outliers-note").textContent =
       `Offices whose ${metric.label.toLowerCase()} this quarter is far enough from the average for similarly ` +
-      `sized offices that fewer than roughly 1 in 10 would normally land that far out by ordinary variation ` +
-      `(z-score ≥ ${MAP_Z_THRESHOLD}). Computed fresh from each new quarter -- click a dot or an office ` +
-      `below to see its full history on the dashboard.`;
+      `sized offices that fewer than roughly ${sensitivity.label} would normally land that far out by ordinary ` +
+      `variation (z-score ≥ ${sensitivity.z}). Computed fresh from each new quarter -- click a dot or an ` +
+      `office below to see its full history on the dashboard.`;
 
     const list = document.getElementById("map-outliers-list");
     list.innerHTML = "";
@@ -1434,6 +1454,19 @@
       state.mapMetric = btn.dataset.metric;
       for (const b of document.querySelectorAll("#map-metric-toggle button")) {
         b.setAttribute("aria-selected", String(b.dataset.metric === state.mapMetric));
+      }
+      syncUrl();
+      renderMap();
+    });
+  }
+
+  function initMapSensitivityToggle() {
+    document.getElementById("map-sensitivity-toggle").addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-sensitivity]");
+      if (!btn || btn.dataset.sensitivity === state.mapSensitivity) return;
+      state.mapSensitivity = btn.dataset.sensitivity;
+      for (const b of document.querySelectorAll("#map-sensitivity-toggle button")) {
+        b.setAttribute("aria-selected", String(b.dataset.sensitivity === state.mapSensitivity));
       }
       syncUrl();
       renderMap();
@@ -2222,6 +2255,10 @@
     if (mapMetricFromUrl && MAP_METRICS[mapMetricFromUrl]) {
       state.mapMetric = mapMetricFromUrl;
     }
+    const mapSensitivityFromUrl = params.get("mapSensitivity");
+    if (mapSensitivityFromUrl && MAP_SENSITIVITY_LEVELS[mapSensitivityFromUrl]) {
+      state.mapSensitivity = mapSensitivityFromUrl;
+    }
 
     applyFormText();
     initFormToggle();
@@ -2230,6 +2267,7 @@
     initYearModeToggle();
     initPageToggle();
     initMapMetricToggle();
+    initMapSensitivityToggle();
     await loadData();
     populateOfficeOptions();
     initOfficeSelectListeners();
@@ -2240,6 +2278,9 @@
     setPage(state.page);
     for (const b of document.querySelectorAll("#map-metric-toggle button")) {
       b.setAttribute("aria-selected", String(b.dataset.metric === state.mapMetric));
+    }
+    for (const b of document.querySelectorAll("#map-sensitivity-toggle button")) {
+      b.setAttribute("aria-selected", String(b.dataset.sensitivity === state.mapSensitivity));
     }
   }
 
