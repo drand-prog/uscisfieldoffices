@@ -33,7 +33,7 @@ assets/vendor/chart.umd.js       Chart.js, vendored locally (no external CDN dep
 assets/vendor/d3-array.js        d3-geo's own dependency
 assets/vendor/d3-geo.js          AlbersUSA projection, used only by the National Map page
 assets/vendor/topojson-client.js decodes the vendored basemap's arcs into GeoJSON
-data/us-states-albers-10m.json   US states basemap, pre-projected (us-atlas, ISC license)
+data/us-states-10m.json          US states basemap, raw lon/lat (us-atlas, ISC license)
 data/raw/                        source USCIS files, one per quarter, both forms
 data/n400_quarterly.json         generated N-400 dataset
 data/i485_quarterly.json         generated I-485 dataset
@@ -245,13 +245,21 @@ one quarter (see Data-quality notes).
   positioned by lon/lat (`OFFICE_COORDS` in `assets/app.js` — approximate
   city-center coordinates, keyed by office code, derived from each office's
   city/state rather than a geocoding API). The basemap
-  (`data/us-states-albers-10m.json`, from `us-atlas`) is pre-projected in
-  AlbersUSA coordinates, so state outlines render with `d3.geoPath()`'s
-  identity transform (no projection argument), while office coordinates are
-  run through a matching `d3.geoAlbersUsa()` to land in the same coordinate
-  space — verified during development against known city positions (e.g.
-  Seattle landing top-left, Miami bottom-right) before trusting it further.
-  AlbersUSA's own composite projection handles the Alaska/Hawaii insets;
+  (`data/us-states-10m.json`, from `us-atlas`) is raw lon/lat, not
+  pre-projected: `loadMapGeo()` builds one `d3.geoAlbersUsa().fitSize(...)`
+  projection from it and reuses that *same instance* for both the state
+  outlines (`d3.geoPath(projection)`) and every office's lon/lat, so the two
+  can't drift out of sync. An earlier version used a separately
+  pre-projected basemap (`-albers-10m.json`) plus a hand-guessed matching
+  `scale`/`translate` for the office points; the guess was wrong enough to
+  put real offices 10s-100s of miles off from their actual state (Miami
+  projected into *north* Florida, Portland ME projected entirely outside
+  Maine) while still looking roughly plausible at a glance, which is how it
+  shipped — caught only once a user compared it against what they knew the
+  map should look like. Fixed by checking a handful of known cities against
+  their actual state polygon's bounds (not just "right general area")
+  before trusting any projection setup again. AlbersUSA's own composite
+  projection handles the Alaska/Hawaii insets;
   Guam/Puerto Rico/USVI fall outside it entirely (it returns `null` for
   them), so those four offices are plotted in two small hand-drawn inset
   boxes instead (`territoryInsetPixel()`), each a simple linear lon/lat
