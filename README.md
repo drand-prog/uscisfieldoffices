@@ -293,7 +293,10 @@ one quarter (see Data-quality notes).
   quarter, which denial rate (unlike, say, Pending cases) can't be computed
   without. The map's legend note also spells out what "Typical" vs.
   "Notable" actually means (a z-score ≥ `MAP_Z_THRESHOLD` relative to
-  similar-sized offices) rather than leaving the colors unexplained.
+  similar-sized offices) rather than leaving the colors unexplained --
+  phrased without the term "z-score" itself ("sit far enough from the
+  average... that fewer than roughly 1 in 10 would normally land that far
+  out"), since that's the one piece of jargon a first pass left in.
 
 ## Local preview
 
