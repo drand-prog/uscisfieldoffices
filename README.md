@@ -284,6 +284,16 @@ one quarter (see Data-quality notes).
   correct regardless of the SVG's current viewBox scale) rather than the
   dot's native SVG `<title>` — a native title tooltip has a ~1s hover delay
   and tiny plain-text styling, easy to miss on a 3-6px dot.
+- **"No data" dots:** every real office always gets a dot, even when the
+  selected metric is null for it that quarter (rendered hollow,
+  `.map-dot-nodata`, with a tooltip explaining why) rather than being
+  omitted. It was omitted at first, which for Guam/USVI/Alaska's N-400
+  denial rate in particular looked like the office was simply missing from
+  the map — their `denied` figure happens to be USCIS-suppressed that
+  quarter, which denial rate (unlike, say, Pending cases) can't be computed
+  without. The map's legend note also spells out what "Typical" vs.
+  "Notable" actually means (a z-score ≥ `MAP_Z_THRESHOLD` relative to
+  similar-sized offices) rather than leaving the colors unexplained.
 
 ## Local preview
 

@@ -1248,14 +1248,25 @@
 
     const dotsGroup = svgEl("g", { class: "map-dots" });
     for (const row of rows) {
-      if (row[metric.valueKey] == null) continue;
       const pixel = officePixel(row.code, mapGeo);
       if (!pixel) continue;
       const [x, y] = pixel;
-      const z = outlierZByCode.get(row.code);
+      // Every real office gets a dot, even when this metric can't be
+      // computed for it this quarter (most often a USCIS-suppressed cell,
+      // same as the "D (suppressed)" gap shown in the dashboard's own
+      // tables) -- silently omitting the dot instead looked like the map
+      // was missing offices rather than missing a number.
+      const hasValue = row[metric.valueKey] != null;
+      const z = hasValue ? outlierZByCode.get(row.code) : undefined;
       const isOutlier = z !== undefined;
       const concern = isOutlier && (metric.concernIsHigh ? z > 0 : z < 0);
-      const cls = isOutlier ? (concern ? "map-dot-concern" : "map-dot-positive") : "map-dot-normal";
+      const cls = !hasValue
+        ? "map-dot-nodata"
+        : isOutlier
+          ? concern
+            ? "map-dot-concern"
+            : "map-dot-positive"
+          : "map-dot-normal";
       const circle = svgEl("circle", {
         cx: x,
         cy: y,
@@ -1312,8 +1323,12 @@
     loc.textContent = row.state || "";
     tooltip.appendChild(loc);
     const val = document.createElement("div");
-    const status = isOutlier ? (concern ? " · notable" : " · standout") : "";
-    val.textContent = `${metric.label}: ${metric.format(row[metric.valueKey])}${status}`;
+    if (row[metric.valueKey] == null) {
+      val.textContent = `${metric.label}: not available this quarter (likely a USCIS-suppressed figure)`;
+    } else {
+      const status = isOutlier ? (concern ? " · notable" : " · standout") : "";
+      val.textContent = `${metric.label}: ${metric.format(row[metric.valueKey])}${status}`;
+    }
     tooltip.appendChild(val);
 
     tooltip.hidden = false;
@@ -1329,7 +1344,11 @@
       { label: `Notable (${metric.concernIsHigh ? "lower" : "higher"})`, color: cssVar("--good") },
       { label: "Typical", color: cssVar("--text-muted") },
     ]);
-    document.getElementById("map-metric-note").textContent = metric.note;
+    document.getElementById("map-metric-note").textContent =
+      `"Typical" offices fall within the normal range for offices their size. "Notable" offices sit far enough ` +
+      `from other similar-sized offices (z-score ≥ ${MAP_Z_THRESHOLD}) that it's unlikely to be random noise ` +
+      `-- not necessarily a problem, just unusual. A hollow dot means this metric isn't available for that office ` +
+      `this quarter, usually because USCIS suppressed the underlying figure for a small count. ${metric.note}`;
   }
 
   function renderMapOutlierList(metric, outliers, mean, latestKey) {
