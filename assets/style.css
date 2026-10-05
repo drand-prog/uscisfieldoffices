@@ -504,6 +504,57 @@ table.data-table tbody tr:not(:last-child) td {
   background: var(--good);
 }
 
+.map-wrap {
+  position: relative;
+  width: 100%;
+}
+
+svg#national-map {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.map-state {
+  fill: var(--page-plane);
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.map-inset-box {
+  fill: none;
+  stroke: var(--gridline);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.map-inset-label {
+  fill: var(--text-muted);
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.map-dot {
+  cursor: pointer;
+  stroke: var(--surface-1);
+  stroke-width: 1;
+}
+.map-dot:hover,
+.map-dot:focus-visible {
+  stroke: var(--text-primary);
+  outline: none;
+}
+.map-dot-normal {
+  fill: var(--text-muted);
+  opacity: 0.55;
+}
+.map-dot-concern {
+  fill: var(--critical);
+}
+.map-dot-positive {
+  fill: var(--good);
+}
+
 footer.site-footer {
   color: var(--text-muted);
   font-size: 0.78rem;

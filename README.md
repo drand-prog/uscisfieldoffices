@@ -13,20 +13,34 @@ by pointing it at this repo. The active form is in the URL (`?form=n400` or
 `?form=i485`, alongside `&office=CODE`), so a link to a specific form/office
 is shareable.
 
+The page has two views, toggled independently of the form (`?page=dashboard`,
+the default, or `?page=map`):
+- **Dashboard** — the office picker, the quarterly trend charts, and the
+  Notable offices panel described above.
+- **National Map** — a dot map of every field office (for the currently
+  selected form/category), colored by whether it's a statistical outlier on
+  a user-chosen metric (Denial rate, Pending cases, Denial rate change, or
+  Efficiency — `?mapMetric=...`), with an outlier list below it. See
+  "National map" under Data-quality notes below for how it's built.
+
 ## Project layout
 
 ```
-index.html                   the page (form-agnostic; text swapped by JS per form)
-assets/style.css             styling (light/dark, CSS custom properties)
-assets/app.js                FORMS config, data loading, office picker, charts, tables
-assets/vendor/chart.umd.js   Chart.js, vendored locally (no external CDN dependency)
-data/raw/                    source USCIS files, one per quarter, both forms
-data/n400_quarterly.json     generated N-400 dataset
-data/i485_quarterly.json     generated I-485 dataset
-scripts/parse_common.py      shared grid parser (xlsx/csv) + layout auto-detection
-scripts/parse_pdf.py         parser for both forms' PDF-era reports (N-400: FY2019-2021; I-485: FY2015 Q1, FY2019-2021)
-scripts/ingest_quarterly.py  builds data/n400_quarterly.json from data/raw/
-scripts/ingest_i485.py       builds data/i485_quarterly.json from data/raw/
+index.html                       the page (form-agnostic; text swapped by JS per form)
+assets/style.css                 styling (light/dark, CSS custom properties)
+assets/app.js                    FORMS config, data loading, office picker, charts, tables, map
+assets/vendor/chart.umd.js       Chart.js, vendored locally (no external CDN dependency)
+assets/vendor/d3-array.js        d3-geo's own dependency
+assets/vendor/d3-geo.js          AlbersUSA projection, used only by the National Map page
+assets/vendor/topojson-client.js decodes the vendored basemap's arcs into GeoJSON
+data/us-states-albers-10m.json   US states basemap, pre-projected (us-atlas, ISC license)
+data/raw/                        source USCIS files, one per quarter, both forms
+data/n400_quarterly.json         generated N-400 dataset
+data/i485_quarterly.json         generated I-485 dataset
+scripts/parse_common.py          shared grid parser (xlsx/csv) + layout auto-detection
+scripts/parse_pdf.py             parser for both forms' PDF-era reports (N-400: FY2019-2021; I-485: FY2015 Q1, FY2019-2021)
+scripts/ingest_quarterly.py      builds data/n400_quarterly.json from data/raw/
+scripts/ingest_i485.py           builds data/i485_quarterly.json from data/raw/
 ```
 
 ## Adding a new quarter
@@ -226,6 +240,37 @@ one quarter (see Data-quality notes).
   form's footer note (`FORMS.<form>.milestoneNote`, applied in
   `applyFormText()`) is written to match which milestones actually show for
   that form, since it's static text rather than generated from the list.
+- **National map:** a dot per field office (not the 6 I-485 service centers,
+  which have no public-facing location, or the TOTAL pseudo-office),
+  positioned by lon/lat (`OFFICE_COORDS` in `assets/app.js` — approximate
+  city-center coordinates, keyed by office code, derived from each office's
+  city/state rather than a geocoding API). The basemap
+  (`data/us-states-albers-10m.json`, from `us-atlas`) is pre-projected in
+  AlbersUSA coordinates, so state outlines render with `d3.geoPath()`'s
+  identity transform (no projection argument), while office coordinates are
+  run through a matching `d3.geoAlbersUsa()` to land in the same coordinate
+  space — verified during development against known city positions (e.g.
+  Seattle landing top-left, Miami bottom-right) before trusting it further.
+  AlbersUSA's own composite projection handles the Alaska/Hawaii insets;
+  Guam/Puerto Rico/USVI fall outside it entirely (it returns `null` for
+  them), so those four offices are plotted in two small hand-drawn inset
+  boxes instead (`territoryInsetPixel()`), each a simple linear lon/lat
+  scale local to that box rather than a real projection. Office
+  received/approved/denied/pending/efficiency/backlog/denial-rate figures
+  come from `computeOfficeMetricsForQuarter()` (the same function the
+  dashboard's own Notable offices panel uses); outliers for whichever metric
+  is selected are flagged with `zOutliers()` (same z-score ≥ 1.3 approach,
+  applied to one metric at a time here instead of four at once). Building
+  the map surfaced a real gap in `computeOfficeMetricsForQuarter()`: it used
+  to skip an office's row entirely if *any* of received/approved/denied/
+  pending was null (e.g. a suppressed `denied` cell), even for a metric like
+  Pending cases that never reads `denied` — fixed by computing each derived
+  field independently, null only when its own inputs are missing, which also
+  makes the dashboard's own outlier panel slightly more complete for offices
+  with a single suppressed cell. Clicking a dot (or an office in the list
+  below the map) jumps to the Dashboard view with that office selected, via
+  the same `office-select` change event the existing outlier panel uses, so
+  the dropdown stays in sync.
 
 ## Local preview
 
