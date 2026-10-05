@@ -1347,9 +1347,9 @@
     document.getElementById("map-metric-note").textContent =
       `"Typical" offices fall within the normal range for offices their size. "Notable" offices sit far enough ` +
       `from the average for similar-sized offices that fewer than roughly 1 in 10 would normally land that far ` +
-      `out just from ordinary quarter-to-quarter ups and downs -- not necessarily a problem, just unusual. A ` +
-      `hollow dot means this metric isn't available for that office this quarter, usually because USCIS ` +
-      `suppressed the underlying figure for a small count. ${metric.note}`;
+      `out just from ordinary quarter-to-quarter ups and downs (z-score ≥ ${MAP_Z_THRESHOLD}) -- not ` +
+      `necessarily a problem, just unusual. A hollow dot means this metric isn't available for that office this ` +
+      `quarter, usually because USCIS suppressed the underlying figure for a small count. ${metric.note}`;
   }
 
   function renderMapOutlierList(metric, outliers, mean, latestKey) {
@@ -1359,9 +1359,9 @@
     document.getElementById("map-outliers-quarter-label").textContent = `— ${quarter.label}${categorySuffix}`;
     document.getElementById("map-outliers-note").textContent =
       `Offices whose ${metric.label.toLowerCase()} this quarter is far enough from the average for similarly ` +
-      `sized offices that fewer than roughly 1 in 10 would normally land that far out by ordinary variation. ` +
-      `Computed fresh from each new quarter -- click a dot or an office below to see its full history on the ` +
-      `dashboard.`;
+      `sized offices that fewer than roughly 1 in 10 would normally land that far out by ordinary variation ` +
+      `(z-score ≥ ${MAP_Z_THRESHOLD}). Computed fresh from each new quarter -- click a dot or an office ` +
+      `below to see its full history on the dashboard.`;
 
     const list = document.getElementById("map-outliers-list");
     list.innerHTML = "";
