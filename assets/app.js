@@ -85,10 +85,13 @@
   };
 
   const state = {
+    page: "dashboard", // "dashboard" | "map"
     formKey: "n400",
     categoryKey: "total", // "total" | one of formConfig().categories -- I-485 only
     denialChangeLag: 1, // 1 (prior quarter) or 4 (four quarters ago)
     yearMode: "fy", // "fy" (fiscal year, default) or "cy" (calendar year) -- x-axis labels
+    mapMetric: "denialRate", // one of MAP_METRICS' keys
+    mapGeo: null, // cached { statesGeo, pathGen, projection } once the basemap loads
     dataset: null,
     quarterKeys: [],
     officeIndex: [], // [{code, name, state}]
@@ -582,6 +585,16 @@
     } else {
       url.searchParams.set("yearMode", state.yearMode);
     }
+    if (state.page === "dashboard") {
+      url.searchParams.delete("page");
+    } else {
+      url.searchParams.set("page", state.page);
+    }
+    if (state.mapMetric === "denialRate") {
+      url.searchParams.delete("mapMetric");
+    } else {
+      url.searchParams.set("mapMetric", state.mapMetric);
+    }
     history.replaceState(null, "", url);
   }
 
@@ -766,16 +779,27 @@
       const o = q.offices[code];
       const { received: r, approved: a, denied: d, pending: p } = o[bucket];
       const { approved: ra, denied: rd } = o[rateBucket];
-      if (r == null || a == null || d == null || p == null) continue;
-      const decided = a + d;
-      const efficiency = r > 0 ? decided / r : null;
-      const backlogMonths = decided > 0 ? (p / decided) * 3 : null;
-      const rateDecided = (ra || 0) + (rd || 0);
-      const denialRate = ra != null && rd != null && rateDecided > 0 ? (rd / rateDecided) * 100 : null;
+      // Each derived metric only needs its own inputs non-null -- a
+      // suppressed `denied` cell (common at small offices) shouldn't also
+      // blank out a metric like pending that never reads it.
+      if (r == null && a == null && d == null && p == null) continue;
+      const decided = a != null && d != null ? a + d : null;
+      const efficiency = decided != null && r != null && r > 0 ? decided / r : null;
+      const backlogMonths = decided != null && decided > 0 && p != null ? (p / decided) * 3 : null;
+      const rateDecided = ra != null && rd != null ? ra + rd : null;
+      const denialRate = rateDecided != null && rateDecided > 0 ? (rd / rateDecided) * 100 : null;
       let qoqReceived = null;
+      let denialRateChange = null;
       const prevO = prevQ ? prevQ.offices[code] : null;
-      if (prevO && prevO[bucket].received) {
+      if (prevO && r != null && prevO[bucket].received) {
         qoqReceived = ((r - prevO[bucket].received) / prevO[bucket].received) * 100;
+      }
+      if (prevO && denialRate != null) {
+        const { approved: pra, denied: prd } = prevO[rateBucket];
+        const prevRateDecided = pra != null && prd != null ? pra + prd : null;
+        if (prevRateDecided != null && prevRateDecided > 0) {
+          denialRateChange = denialRate - (prd / prevRateDecided) * 100;
+        }
       }
       rows.push({
         code,
@@ -788,6 +812,7 @@
         backlogMonths,
         denialRate,
         qoqReceived,
+        denialRateChange,
       });
     }
     return rows;
@@ -942,6 +967,418 @@
 
       list.appendChild(card);
     }
+  }
+
+  // ---------- National map ----------
+  // Approximate city-center [lon, lat] for every real field office (not the
+  // 6 I-485 service centers, which have no public-facing location and whose
+  // `state` field is a "Service Center" sentinel rather than a real state,
+  // and not the TOTAL pseudo-office). Precision to the right city is what
+  // matters here, not street-address accuracy.
+  const OFFICE_COORDS = {
+    ABQ: [-106.6504, 35.0844],
+    ALB: [-73.7562, 42.6526],
+    ANC: [-149.9003, 61.2181],
+    ATL: [-84.388, 33.749],
+    BAL: [-76.6122, 39.2904],
+    BNY: [-73.9442, 40.6782],
+    BOI: [-116.2023, 43.615],
+    BOS: [-71.0589, 42.3601],
+    BUF: [-78.8784, 42.8864],
+    CHI: [-87.6298, 41.8781],
+    CHL: [-79.9311, 32.7765],
+    CHS: [-81.6326, 38.3498],
+    CIN: [-84.512, 39.1031],
+    CLE: [-81.6944, 41.4993],
+    CLM: [-82.9988, 39.9612],
+    CLT: [-80.8431, 35.2271],
+    CVC: [-117.0842, 32.6401],
+    DAL: [-96.797, 32.7767],
+    DEN: [-104.9903, 39.7392],
+    DET: [-83.0458, 42.3314],
+    DSM: [-93.625, 41.5868],
+    DVD: [-75.4664, 39.1293],
+    ELP: [-106.485, 31.7619],
+    FRE: [-119.7871, 36.7378],
+    FSA: [-94.3985, 35.3859],
+    GRR: [-82.2271, 34.9387],
+    HAR: [-72.6734, 41.7658],
+    HEL: [-112.0391, 46.5891],
+    HHW: [-157.8583, 21.3069],
+    HIA: [-80.2781, 25.8576],
+    HLG: [-97.6961, 26.1906],
+    HOU: [-95.3698, 29.7604],
+    IMP: [-115.5694, 32.8475],
+    INP: [-86.1581, 39.7684],
+    JAC: [-81.6557, 30.3322],
+    KAN: [-94.5786, 39.0997],
+    KND: [-80.3173, 25.6793],
+    LAC: [-118.0817, 33.9022],
+    LAW: [-71.1631, 42.707],
+    LNY: [-73.2004, 40.8198],
+    LOS: [-118.2437, 34.0522],
+    LOU: [-85.7585, 38.2527],
+    LVG: [-115.1398, 36.1699],
+    MAN: [-71.4548, 42.9956],
+    MEM: [-90.049, 35.1495],
+    MGA: [-86.3, 32.3668],
+    MIA: [-80.1918, 25.7617],
+    MIL: [-87.9065, 43.0389],
+    MTL: [-74.8907, 39.934],
+    NEW: [-74.1724, 40.7357],
+    NJC: [-74.3149, 40.8837],
+    NOL: [-90.0715, 29.9511],
+    NOR: [-76.2859, 36.8508],
+    NTN: [-86.7816, 36.1627],
+    NYC: [-74.006, 40.7128],
+    OFM: [-81.8723, 26.6406],
+    OKC: [-97.5164, 35.4676],
+    OKL: [-80.1373, 26.1751],
+    OMA: [-95.9345, 41.2565],
+    ORL: [-81.3792, 28.5383],
+    PHI: [-75.1652, 39.9526],
+    PHO: [-112.074, 33.4484],
+    PIT: [-79.9959, 40.4406],
+    POM: [-70.2568, 43.6591],
+    POO: [-122.6784, 45.5152],
+    PRO: [-71.4128, 41.824],
+    QNS: [-73.7949, 40.7282],
+    RAL: [-78.6382, 35.7796],
+    REN: [-119.8138, 39.5296],
+    SAA: [-117.8677, 33.7455],
+    SAC: [-121.4944, 38.5816],
+    SBD: [-117.2898, 34.1083],
+    SEA: [-122.3321, 47.6062],
+    SFR: [-122.4194, 37.7749],
+    SFV: [-118.4723, 34.2642],
+    SLC: [-111.891, 40.7608],
+    SNA: [-98.4936, 29.4241],
+    SND: [-117.1611, 32.7157],
+    SNJ: [-121.8863, 37.3382],
+    SPM: [-93.09, 44.9537],
+    SPO: [-117.426, 47.6588],
+    STA: [-73.0837, 44.8109],
+    STL: [-90.1994, 38.627],
+    TAM: [-82.4572, 27.9506],
+    TUC: [-110.9747, 32.2226],
+    WAS: [-77.0369, 38.9072],
+    WIC: [-97.3301, 37.6872],
+    WPB: [-80.0534, 26.7153],
+    YAK: [-120.5059, 46.6021],
+  };
+
+  // Outside AlbersUSA's composite (continental US + AK/HI insets), so these
+  // are drawn in their own small inset boxes instead -- see
+  // territoryInsetPixel() and buildTerritoryInsetChrome() below.
+  const TERRITORY_COORDS = {
+    AGA: [144.7937, 13.4443], // Hagatna, Guam
+    CHA: [-64.9307, 18.3419], // Charlotte Amalie, USVI
+    CHR: [-64.705, 17.7478], // Christiansted, USVI
+    SAJ: [-66.1057, 18.4655], // San Juan, PR
+  };
+
+  const PR_USVI_INSET = { x: 1000, y: 400, w: 130, h: 100 };
+  const GUAM_INSET = { x: 1000, y: 520, w: 130, h: 80 };
+  const PR_USVI_LON_RANGE = [-67.3, -64.5];
+  const PR_USVI_LAT_RANGE = [17.5, 18.7];
+
+  function territoryInsetPixel(code) {
+    if (code === "AGA") {
+      return [GUAM_INSET.x + GUAM_INSET.w / 2, GUAM_INSET.y + GUAM_INSET.h / 2];
+    }
+    const [lon, lat] = TERRITORY_COORDS[code];
+    const fx = (lon - PR_USVI_LON_RANGE[0]) / (PR_USVI_LON_RANGE[1] - PR_USVI_LON_RANGE[0]);
+    const fy = (lat - PR_USVI_LAT_RANGE[0]) / (PR_USVI_LAT_RANGE[1] - PR_USVI_LAT_RANGE[0]);
+    const pad = 20;
+    return [
+      PR_USVI_INSET.x + pad + fx * (PR_USVI_INSET.w - 2 * pad),
+      PR_USVI_INSET.y + (PR_USVI_INSET.h - pad) - fy * (PR_USVI_INSET.h - 2 * pad),
+    ];
+  }
+
+  function buildTerritoryInsetChrome() {
+    const g = svgEl("g", { class: "map-inset-chrome" });
+    for (const [box, label] of [
+      [PR_USVI_INSET, "PR / USVI"],
+      [GUAM_INSET, "Guam"],
+    ]) {
+      g.appendChild(svgEl("rect", { x: box.x, y: box.y, width: box.w, height: box.h, class: "map-inset-box" }));
+      const text = svgEl("text", { x: box.x + box.w / 2, y: box.y - 6, class: "map-inset-label" });
+      text.textContent = label;
+      g.appendChild(text);
+    }
+    return g;
+  }
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  function svgEl(tag, attrs) {
+    const el = document.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, v);
+    return el;
+  }
+
+  // Loaded once and cached on state.mapGeo -- the basemap doesn't change
+  // between forms/metrics, only which offices/colors are drawn on top of it.
+  async function loadMapGeo() {
+    if (state.mapGeo) return state.mapGeo;
+    const res = await fetch("data/us-states-albers-10m.json");
+    const topology = await res.json();
+    const statesGeo = topojson.feature(topology, topology.objects.states);
+    // The topology's coordinates are already Albers-USA-projected (that's
+    // what the "-albers-" file is), so the path generator uses the identity
+    // transform -- no projection argument -- while office lon/lat still
+    // need to go through the matching d3.geoAlbersUsa() to land in the same
+    // coordinate space (verified against known city positions during dev).
+    const pathGen = d3.geoPath();
+    const projection = d3.geoAlbersUsa().scale(1070).translate([480, 250]);
+    state.mapGeo = { statesGeo, pathGen, projection };
+    return state.mapGeo;
+  }
+
+  function officePixel(code, mapGeo) {
+    if (TERRITORY_COORDS[code]) return territoryInsetPixel(code);
+    const coords = OFFICE_COORDS[code];
+    if (!coords) return null;
+    return mapGeo.projection(coords);
+  }
+
+  const MAP_Z_THRESHOLD = 1.3;
+
+  const MAP_METRICS = {
+    denialRate: {
+      label: "Denial rate",
+      valueKey: "denialRate",
+      volumeKey: "decided",
+      minVolume: 100,
+      format: (v) => `${v.toFixed(1)}%`,
+      concernIsHigh: true,
+      note: "Share of decided cases that ended in denial this quarter (same category as the dashboard's Denial rate chart). Offices with at least 100 decided cases.",
+    },
+    pending: {
+      label: "Pending cases",
+      valueKey: "pending",
+      volumeKey: "pending",
+      minVolume: 50,
+      format: (v) => fmtInt.format(v),
+      concernIsHigh: true,
+      note: "Total pending cases as of quarter end. Offices with at least 50 pending cases -- note this naturally tends to flag an office's largest, busiest locations, not necessarily mismanaged ones.",
+    },
+    denialRateChange: {
+      label: "Denial rate change",
+      valueKey: "denialRateChange",
+      volumeKey: "decided",
+      minVolume: 100,
+      format: (v) => fmtPp(v),
+      concernIsHigh: true,
+      note: "Percentage-point change in denial rate versus the prior quarter. Offices with at least 100 decided cases in both quarters.",
+    },
+    efficiency: {
+      label: "Efficiency",
+      valueKey: "efficiency",
+      volumeKey: "received",
+      minVolume: 100,
+      format: (v) => v.toFixed(2),
+      concernIsHigh: false,
+      note: "Completions (approved + denied) ÷ received this quarter. Offices with at least 100 applications received.",
+    },
+  };
+
+  function computeMapRows() {
+    const latestKey = state.quarterKeys[state.quarterKeys.length - 1];
+    const prevKey = state.quarterKeys[state.quarterKeys.length - 2];
+    const rows = computeOfficeMetricsForQuarter(latestKey, prevKey).filter(
+      (r) => OFFICE_COORDS[r.code] || TERRITORY_COORDS[r.code]
+    );
+    return { latestKey, rows };
+  }
+
+  function mapFlagText(metric, row, mean, concern) {
+    const value = metric.format(row[metric.valueKey]);
+    const avg = metric.format(mean);
+    switch (metric.valueKey) {
+      case "denialRate":
+        return concern
+          ? `Denial rate ${value} this quarter, vs a ${avg} average across offices this size.`
+          : `Denial rate just ${value} this quarter, well below the ${avg} average.`;
+      case "pending":
+        return `${value} pending cases this quarter, vs a ${avg} average across offices this size.`;
+      case "denialRateChange":
+        return concern
+          ? `Denial rate rose ${value} versus last quarter, vs a ${avg} average swing.`
+          : `Denial rate fell ${value} versus last quarter, vs a ${avg} average swing.`;
+      case "efficiency":
+        return concern
+          ? `Completed only ${Math.round(row.efficiency * 100)}% as many cases as it received this quarter (efficiency ${value} vs a ${avg} average) — backlog growing fast.`
+          : `Completed ${Math.round(row.efficiency * 100)}% as many cases as it received this quarter (efficiency ${value} vs a ${avg} average) — working down its backlog.`;
+      default:
+        return `${value} vs a ${avg} average.`;
+    }
+  }
+
+  async function renderMap() {
+    const svg = document.getElementById("national-map");
+    const mapGeo = await loadMapGeo();
+    if (state.page !== "map") return; // user navigated away while the basemap was loading
+    svg.innerHTML = "";
+
+    const statesGroup = svgEl("g", { class: "map-states" });
+    for (const feature of mapGeo.statesGeo.features) {
+      const d = mapGeo.pathGen(feature);
+      if (!d) continue;
+      const path = svgEl("path", { d, class: "map-state" });
+      path.appendChild(svgEl("title")).textContent = feature.properties.name;
+      statesGroup.appendChild(path);
+    }
+    svg.appendChild(statesGroup);
+    svg.appendChild(buildTerritoryInsetChrome());
+
+    const metricKey = state.mapMetric;
+    const metric = MAP_METRICS[metricKey];
+    const { latestKey, rows } = computeMapRows();
+    const { outliers, mean } = zOutliers(rows, metric.valueKey, metric.volumeKey, metric.minVolume, MAP_Z_THRESHOLD);
+    const outlierZByCode = new Map(outliers.map((o) => [o.row.code, o.z]));
+
+    document.getElementById("map-empty-note").hidden = rows.some((r) => r[metric.valueKey] != null);
+
+    const dotsGroup = svgEl("g", { class: "map-dots" });
+    for (const row of rows) {
+      if (row[metric.valueKey] == null) continue;
+      const pixel = officePixel(row.code, mapGeo);
+      if (!pixel) continue;
+      const [x, y] = pixel;
+      const z = outlierZByCode.get(row.code);
+      const isOutlier = z !== undefined;
+      const concern = isOutlier && (metric.concernIsHigh ? z > 0 : z < 0);
+      const cls = isOutlier ? (concern ? "map-dot-concern" : "map-dot-positive") : "map-dot-normal";
+      const circle = svgEl("circle", {
+        cx: x,
+        cy: y,
+        r: isOutlier ? 6 : 3,
+        class: `map-dot ${cls}`,
+        tabindex: "0",
+        role: "button",
+      });
+      circle
+        .appendChild(svgEl("title"))
+        .appendChild(
+          document.createTextNode(
+            `${row.name} (${row.state}) — ${metric.format(row[metric.valueKey])}${isOutlier ? (concern ? "  • notable" : "  • standout") : ""}`
+          )
+        );
+      circle.addEventListener("click", () => selectOfficeFromMap(row.code));
+      circle.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter" || ev.key === " ") selectOfficeFromMap(row.code);
+      });
+      dotsGroup.appendChild(circle);
+    }
+    svg.appendChild(dotsGroup);
+
+    renderMapLegend(metric);
+    renderMapOutlierList(metric, outliers, mean, latestKey);
+  }
+
+  function selectOfficeFromMap(code) {
+    setPage("dashboard");
+    const select = document.getElementById("office-select");
+    select.value = code;
+    select.dispatchEvent(new Event("change")); // same path the outlier panel uses, so office-select stays in sync
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function renderMapLegend(metric) {
+    renderLegend("map-legend", [
+      { label: `Notable (${metric.concernIsHigh ? "higher" : "lower"})`, color: cssVar("--critical") },
+      { label: `Notable (${metric.concernIsHigh ? "lower" : "higher"})`, color: cssVar("--good") },
+      { label: "Typical", color: cssVar("--text-muted") },
+    ]);
+    document.getElementById("map-metric-note").textContent = metric.note;
+  }
+
+  function renderMapOutlierList(metric, outliers, mean, latestKey) {
+    const quarter = state.dataset.quarters[latestKey];
+    const categorySuffix = state.categoryKey === "total" ? "" : `, ${categoryLabel(state.categoryKey)} only`;
+    document.getElementById("map-quarter-label").textContent = `— ${quarter.label}${categorySuffix}`;
+    document.getElementById("map-outliers-quarter-label").textContent = `— ${quarter.label}${categorySuffix}`;
+    document.getElementById("map-outliers-note").textContent =
+      `Offices whose ${metric.label.toLowerCase()} sits statistically far from their peers this quarter ` +
+      `(z-score ≥ ${MAP_Z_THRESHOLD}). Computed fresh from each new quarter -- click a dot or an office below ` +
+      `to see its full history on the dashboard.`;
+
+    const list = document.getElementById("map-outliers-list");
+    list.innerHTML = "";
+
+    if (outliers.length === 0) {
+      const p = document.createElement("p");
+      p.className = "chart-note";
+      p.textContent = "No offices stood out from their peers by this measure this quarter.";
+      list.appendChild(p);
+      return;
+    }
+
+    for (const { row, z } of outliers) {
+      const concern = metric.concernIsHigh ? z > 0 : z < 0;
+      const card = document.createElement("div");
+      card.className = "outlier-office";
+
+      const header = document.createElement("button");
+      header.className = "outlier-office-header";
+      header.type = "button";
+
+      const nameSpan = document.createElement("span");
+      nameSpan.className = "outlier-office-name";
+      nameSpan.textContent = `${row.name} (${row.code})`;
+      header.appendChild(nameSpan);
+
+      const locSpan = document.createElement("span");
+      locSpan.className = "outlier-office-loc";
+      locSpan.textContent = row.state || "";
+      header.appendChild(locSpan);
+
+      header.addEventListener("click", () => selectOfficeFromMap(row.code));
+      card.appendChild(header);
+
+      const ul = document.createElement("ul");
+      ul.className = "outlier-reasons";
+      const li = document.createElement("li");
+      li.className = `outlier-reason ${concern ? "concern" : "positive"}`;
+      li.textContent = mapFlagText(metric, row, mean, concern);
+      ul.appendChild(li);
+      card.appendChild(ul);
+
+      list.appendChild(card);
+    }
+  }
+
+  function setPage(page) {
+    state.page = page;
+    document.getElementById("dashboard-page").hidden = page !== "dashboard";
+    document.getElementById("map-page").hidden = page !== "map";
+    for (const btn of document.querySelectorAll("#page-toggle button")) {
+      btn.setAttribute("aria-selected", String(btn.dataset.page === page));
+    }
+    syncUrl();
+    if (page === "map") renderMap();
+  }
+
+  function initPageToggle() {
+    document.getElementById("page-toggle").addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-page]");
+      if (!btn || btn.dataset.page === state.page) return;
+      setPage(btn.dataset.page);
+    });
+  }
+
+  function initMapMetricToggle() {
+    document.getElementById("map-metric-toggle").addEventListener("click", (ev) => {
+      const btn = ev.target.closest("button[data-metric]");
+      if (!btn || btn.dataset.metric === state.mapMetric) return;
+      state.mapMetric = btn.dataset.metric;
+      for (const b of document.querySelectorAll("#map-metric-toggle button")) {
+        b.setAttribute("aria-selected", String(b.dataset.metric === state.mapMetric));
+      }
+      syncUrl();
+      renderMap();
+    });
   }
 
   // ---------- Stat tiles ----------
@@ -1635,6 +2072,7 @@
       syncUrl();
       renderAll();
       renderOutlierPanel();
+      if (state.page === "map") renderMap();
     });
   }
 
@@ -1647,6 +2085,7 @@
       syncUrl();
       renderAll();
       renderOutlierPanel();
+      if (state.page === "map") renderMap();
     });
   }
 
@@ -1716,12 +2155,22 @@
     if (yearModeFromUrl === "fy" || yearModeFromUrl === "cy") {
       state.yearMode = yearModeFromUrl;
     }
+    const pageFromUrl = params.get("page");
+    if (pageFromUrl === "map") {
+      state.page = "map";
+    }
+    const mapMetricFromUrl = params.get("mapMetric");
+    if (mapMetricFromUrl && MAP_METRICS[mapMetricFromUrl]) {
+      state.mapMetric = mapMetricFromUrl;
+    }
 
     applyFormText();
     initFormToggle();
     initCategoryToggle();
     initDenialChangeToggle();
     initYearModeToggle();
+    initPageToggle();
+    initMapMetricToggle();
     await loadData();
     populateOfficeOptions();
     initOfficeSelectListeners();
@@ -1729,6 +2178,10 @@
     syncUrl();
     renderAll();
     renderOutlierPanel();
+    setPage(state.page);
+    for (const b of document.querySelectorAll("#map-metric-toggle button")) {
+      b.setAttribute("aria-selected", String(b.dataset.metric === state.mapMetric));
+    }
   }
 
   main();

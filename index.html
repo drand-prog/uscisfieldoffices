@@ -20,6 +20,11 @@
     <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Toggle dark mode">🌓 Theme</button>
   </header>
 
+  <div class="form-toggle" id="page-toggle" role="tablist" aria-label="Page">
+    <button type="button" role="tab" data-page="dashboard" aria-selected="true">Dashboard</button>
+    <button type="button" role="tab" data-page="map">National Map</button>
+  </div>
+
   <div class="form-toggle" id="form-toggle" role="tablist" aria-label="Form type">
     <button type="button" role="tab" data-form="n400">N-400 (Naturalization)</button>
     <button type="button" role="tab" data-form="i485">I-485 (Adjustment of Status)</button>
@@ -34,6 +39,7 @@
   </div>
   <p class="chart-note" id="category-note" hidden></p>
 
+  <div id="dashboard-page">
   <section class="filter-row">
     <div class="field-group">
       <label for="office-filter" id="office-filter-label">Search offices</label>
@@ -150,6 +156,32 @@
     <p class="chart-note" id="outliers-note"></p>
     <div id="outliers-list"></div>
   </section>
+  </div>
+
+  <div id="map-page" hidden>
+    <div class="form-toggle lag-toggle" id="map-metric-toggle" role="tablist" aria-label="Map metric">
+      <button type="button" role="tab" data-metric="denialRate" aria-selected="true">Denial rate</button>
+      <button type="button" role="tab" data-metric="pending">Pending cases</button>
+      <button type="button" role="tab" data-metric="denialRateChange">Denial rate change</button>
+      <button type="button" role="tab" data-metric="efficiency">Efficiency</button>
+    </div>
+    <p class="chart-note" id="map-metric-note"></p>
+
+    <section class="chart-card">
+      <h2>Field offices <span id="map-quarter-label"></span></h2>
+      <div class="legend-row" id="map-legend"></div>
+      <div class="map-wrap">
+        <svg id="national-map" viewBox="-60 -10 1210 630" role="img" aria-label="Map of USCIS field offices"></svg>
+      </div>
+      <p class="chart-note" id="map-empty-note" hidden>No offices meet the minimum case volume for this metric this quarter.</p>
+    </section>
+
+    <section class="chart-card" id="map-outliers-card">
+      <h2>Outlier offices <span id="map-outliers-quarter-label"></span></h2>
+      <p class="chart-note" id="map-outliers-note"></p>
+      <div id="map-outliers-list"></div>
+    </section>
+  </div>
 
   <footer class="site-footer">
     <p id="footer-source"></p>
@@ -170,6 +202,9 @@
 </div>
 
 <script src="assets/vendor/chart.umd.js"></script>
+<script src="assets/vendor/d3-array.js"></script>
+<script src="assets/vendor/d3-geo.js"></script>
+<script src="assets/vendor/topojson-client.js"></script>
 <script src="assets/app.js"></script>
 </body>
 </html>
